@@ -1,607 +1,654 @@
 # Sentinel - Campus Safety & Security System
 
-## Overview
+## Project Overview
 
-Sentinel is a campus safety and security system that provides:
-- Multi-factor authentication (Face Recognition, ID Card, PIN)
-- Real-time access monitoring and logging
-- Admin dashboard for security staff
-- User management for students/faculty/staff
+Sentinel is a comprehensive campus safety and security system that provides multi-factor authentication, real-time access monitoring, and user management for educational institutions.
 
-## Project Structure
+### Mission
 
-```
-sentinel/
-├── backend-go/                  # Go API server
-│   ├── main.go                 # Main application
-│   ├── go.mod                 # Go module
-│   ├── go.sum                 # Dependencies
-│   ├── sentinel               # Compiled binary
-│   ├── sentinel.db            # SQLite database
-│   ├── build.sh               # Build script
-│   ├── start.sh               # Start script
-│   └── access-controller/     # Pi access controller
-│       └── main.go           # Access controller code
-├── frontend/                   # Web frontend
-│   └── templates/            # HTML templates
-│       ├── index.html        # Admin dashboard
-│       └── login.html        # Login page
-├── .github/workflows/          # CI/CD
-│   └── build.yml             # Build workflow
-├── brief.md                   # Project brief
-├── plan.md                   # Development plan
-└── documentation.md          # This file
-```
-
-## Quick Start
-
-### 1. Install Go
-
-```bash
-# On Raspberry Pi
-sudo apt install golang
-
-# Or download from https://go.dev/dl/
-```
-
-### 2. Run the Server
-
-```bash
-cd backend-go
-go mod download
-go run main.go
-```
-
-Or run the compiled binary:
-
-```bash
-./sentinel
-```
-
-### Build from Source
-
-#### Linux/macOS
-
-```bash
-cd backend-go
-./build.sh
-```
-
-#### Windows
-
-```cmd
-cd backend-go
-build.bat
-```
-
-Or manually:
-
-```cmd
-go mod download
-go build -ldflags="-s -w" -o sentinel.exe .
-```
-
-#### Cross-Compile for Raspberry Pi (from Linux/Windows)
-
-**ARM64 (Pi 3/4/5):**
-```bash
-cd backend-go
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o sentinel-arm64 .
-```
-
-**ARMv7 (Pi 2):**
-```bash
-GOOS=linux GOARCH=arm CGO_ENABLED=0 go build -o sentinel-armv7 .
-```
-
-Or use the GitHub Actions workflow:
-- Go to Actions → Build → Run workflow
-- Download built binaries from Artifacts
-
-The server will:
-- Initialize the SQLite database (`sentinel.db`)
-- Create default admin user
-- Seed default zones and sample users
-- Start on `http://0.0.0.0:5000`
-
-### 3. Access Admin Panel
-
-Open browser: `http://<server-ip>:5000`
-
-Default credentials:
-- Username: `admin`
-- Password: `admin123`
-
-### 4. Default Data
-
-The server creates sample users with card IDs:
-
-| User ID | Name | Role | Card ID | Can Access |
-|---------|------|------|---------|------------|
-| STU001 | John Doe | student | STU001 | Computer Lab, Library |
-| STU002 | Jane Smith | student | STU002 | Computer Lab, Library |
-| FAC001 | Dr. Emily Brown | faculty | FAC001 | All zones |
-
-## API Endpoints
-
-### Admin Endpoints (require login)
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/login` | GET/POST | Admin login |
-| `/logout` | GET | Logout |
-| `/` | GET | Admin dashboard |
-| `/api/stats` | GET | Dashboard statistics |
-| `/api/access-logs` | GET | Access logs (50 most recent) |
-| `/api/alerts` | GET | System alerts |
-| `/api/alerts/:id` | POST | Update alert status |
-| `/api/users` | GET/POST | List/Create users |
-| `/api/users/:id` | PUT/DELETE | Update/Delete user |
-| `/api/zones` | GET/POST | List/Create zones |
-| `/api/occupancy` | GET | Live occupancy per zone |
-
-### Access Controller Endpoints (no auth)
-
-These endpoints are used by Pi/Arduino devices at access points.
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/authenticate` | POST | Validate card access |
-| `/api/access-log` | POST | Log entry/exit/denied |
-| `/api/door/:zone_id/:action` | POST | Lock/unlock/status door |
-| `/api/health` | GET | Health check |
+To create a secure, intelligent campus access control system that verifies identity through multiple methods (NFC cards, facial recognition), maintains real-time occupancy tracking, and provides security staff with actionable insights through an intuitive admin dashboard.
 
 ---
 
-## Access Controller API Examples
+## Project History & Evolution
 
-### 1. Authenticate a Card
+### Development Journey (from git log)
 
-Used by Arduino/Pi to verify if a card has access.
-
-**Request:**
-```bash
-curl -X POST http://localhost:5000/api/authenticate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "card_id": "STU001",
-    "zone_id": 1,
-    "method": "card"
-  }'
+```
+f27e2d8  Plan + Brief
+8b3476e  Frontend and backend added
+6c7516d  Added more api endpoints + extras
+d3e2207  Added windows exe
+fab2689  Python & Arduino
+1a933f8  Smaller binary :)
+a5fbf8c  Add server integration to face-check and rfid-operation
+145aa93  Add API key authentication for access controller endpoints
 ```
 
-**Success Response:**
-```json
-{
-  "success": true,
-  "user_id": "STU001",
-  "user_name": "John Doe",
-  "message": "Access granted",
-  "role": "student"
-}
+### Iteration Breakdown
+
+| Commit | Phase | Description |
+|--------|-------|-------------|
+| f27e2d8 | Planning | Project brief and plan created |
+| 8b3476e | Foundation | Flask backend + HTML frontend |
+| 6c7516d | Core Features | API endpoints, user management |
+| d3e2207 | Cross-Platform | Windows executable support |
+| fab2689 | Hardware | Python/Arduino integration |
+| 1a933f8 | Optimization | Binary size reduction |
+| a5fbf8c | Integration | Server communication for auth |
+| 145aa93 | Security | API key authentication |
+
+---
+
+## System Architecture
+
+### High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              SENTINEL SYSTEM                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐  │
+│  │   ADMIN PANEL   │     │   MOBILE APP    │     │  ACCESS POINTS   │  │
+│  │   (Web UI)      │     │   (Future)      │     │   (Pi + Arduino) │  │
+│  └────────┬─────────┘     └────────┬─────────┘     └────────┬─────────┘  │
+│           │                       │                       │               │
+│           └───────────────────────┼───────────────────────┘               │
+│                                   │                                        │
+│                                   ▼                                        │
+│                    ┌──────────────────────────────┐                       │
+│                    │      BACKEND SERVER           │                       │
+│                    │         (Go/Gin)             │                       │
+│                    │         Port 5000            │                       │
+│                    └──────────────┬───────────────┘                       │
+│                                   │                                        │
+│                    ┌──────────────┴───────────────┐                       │
+│                    │      DATABASE                │                       │
+│                    │     (SQLite/PostgreSQL)     │                       │
+│                    │   sentinel.db                │                       │
+│                    └─────────────────────────────┘                       │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Denied Response:**
-```json
-{
-  "success": false,
-  "user_id": "STU001",
-  "user_name": "John Doe",
-  "message": "Access denied: Restricted area"
-}
+### Component Details
+
+#### 1. Backend Server (Go)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     BACKEND SERVER                            │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │                 GIN ROUTER                          │    │
+│  ├─────────────────────────────────────────────────────┤    │
+│  │  Admin Routes (Session Auth)                        │    │
+│  │    ├─ GET  /login, POST /login                   │    │
+│  │    ├─ GET  /logout                                │    │
+│  │    ├─ GET  / (dashboard)                          │    │
+│  │    └─ API /api/* (protected)                      │    │
+│  │                                                      │    │
+│  │  Access Controller Routes (API Key Auth)            │    │
+│  │    ├─ POST /api/authenticate                      │    │
+│  │    ├─ POST /api/access-log                        │    │
+│  │    ├─ POST /api/door/:id/:action                 │    │
+│  │    ├─ GET  /api/occupancy                        │    │
+│  │    └─ GET  /api/health                           │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                                                              │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │               DATABASE MODELS                        │    │
+│  ├─────────────────────────────────────────────────────┤    │
+│  │  Admin    │  User  │  Zone  │  AccessLog           │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### 2. Log Access Event
+#### 2. Access Controller (Raspberry Pi + Arduino)
 
-Log when someone enters or exits.
-
-**Request:**
-```bash
-curl -X POST http://localhost:5000/api/access-log \
-  -H "Content-Type: application/json" \
-  -d '{
-    "card_id": "STU001",
-    "zone_id": 1,
-    "method": "card",
-    "action": "entry",
-    "success": true
-  }'
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  ACCESS CONTROLLER NODE                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    │
+│  │  Arduino    │    │   Pi        │    │   Camera    │    │
+│  │  Nano/Mega  │◄──►│  (Python)   │◄──►│  (USB)      │    │
+│  └──────┬──────┘    └──────┬──────┘    └─────────────┘    │
+│         │                  │                               │
+│    ┌────┴────┐        ┌────┴────┐                         │
+│    │ NFC    │        │ Server  │                         │
+│    │ RC522  │        │  API   │                         │
+│    └─────────┘        └────────┘                         │
+│                                                              │
+│  GPIO Outputs:                                              │
+│    ├─ Green LED  (Access Granted)                           │
+│    ├─ Red LED   (Access Denied)                            │
+│    └─ Relay    (Door Lock)                                │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### 3. Get Live Occupancy
+#### 3. Admin Dashboard
 
-Get current occupancy for all zones.
-
-**Request:**
-```bash
-curl http://localhost:5000/api/occupancy
 ```
-
-**Response:**
-```json
-[
-  {
-    "zone_id": 1,
-    "zone_name": "Computer Lab 1",
-    "current_occupancy": 5,
-    "max_capacity": 30,
-    "percentage": 16.67
-  },
-  {
-    "zone_id": 2,
-    "zone_name": "Chemistry Lab",
-    "current_occupancy": 2,
-    "max_capacity": 20,
-    "percentage": 10
-  }
-]
-```
-
-### 4. Control Door
-
-Lock/unlock a door or get status.
-
-```bash
-# Unlock door for zone 1
-curl -X POST http://localhost:5000/api/door/1/unlock
-
-# Lock door for zone 1
-curl -X POST http://localhost:5000/api/door/1/lock
-
-# Get door status
-curl http://localhost:5000/api/door/1/status
-```
-
-### 5. Health Check
-
-```bash
-curl http://localhost:5000/api/health
+┌─────────────────────────────────────────────────────────────┐
+│                     ADMIN DASHBOARD                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  STATS CARDS                                        │   │
+│  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐      │   │
+│  │  │Access  │ │Alerts  │ │Zones   │ │Users   │      │   │
+│  │  │Today   │ │Active  │ │Occupied│ │Total   │      │   │
+│  │  └────────┘ └────────┘ └────────┘ └────────┘      │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                                                              │
+│  ┌─────────────────────┐  ┌─────────────────────────┐    │
+│  │  ALERTS PANEL       │  │  ACCESS LOGS TABLE       │    │
+│  │  - Warning          │  │  Time | User | Zone     │    │
+│  │  - Info             │  │  ─────────────────────  │    │
+│  │  - Success          │  │  09:15 | John | Lab 1   │    │
+│  └─────────────────────┘  └─────────────────────────┘    │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  TABS: Dashboard | Users | Zones                    │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Hardware Integration
+## Data Flow
 
-### Architecture
-
-```
-┌─────────────┐         ┌─────────────┐
-│   Arduino   │────────▶│   Server    │
-│  + NFC RC522│  HTTP   │  (Pi/Cloud) │
-│  + Camera   │         │             │
-└─────────────┘         └─────────────┘
-       │                        │
-       │ LED/Buzzer            │ Web Dashboard
-       ▼                        ▼
-   Door Lock               Admin Panel
-```
-
-### Arduino Setup
-
-Connect Arduino to Raspberry Pi via USB serial or Ethernet.
-
-**Arduino Code (sketch):**
-
-```cpp
-#include <SPI.h>
-#include <MFRC522.h>
-#include <SoftwareSerial.h>
-
-#define RST_PIN 9
-#define SS_PIN 10
-
-MFRC522 rfid(SS_PIN, RST_PIN);
-SoftwareSerial espSerial(2, 3); // RX, TX - connect to ESP01
-
-String serverIP = "192.168.1.100"; // Your Pi IP
-String zoneId = "1";
-
-void setup() {
-  Serial.begin(9600);
-  SPI.begin();
-  rfid.PCD_Init();
-  espSerial.begin(9600);
-  
-  pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(7, OUTPUT); // Green LED
-  pinMode(6, OUTPUT); // Red LED
-}
-
-void loop() {
-  if (!rfid.PICC_IsNewCardPresent()) return;
-  if (!rfid.PICC_ReadCardSerial()) return;
-  
-  String cardUID = "";
-  for (byte i = 0; i < rfid.uid.size; i++) {
-    cardUID += String(rfid.uid.uidByte[i], HEX);
-  }
-  
-  Serial.println("Card: " + cardUID);
-  authenticateCard(cardUID);
-  
-  rfid.PICC_HaltA();
-}
-
-void authenticateCard(String cardUID) {
-  // Send to server via Serial (Pi receives this)
-  Serial.println("AUTH:" + cardUID + ":" + zoneId);
-  
-  // Wait for response from Pi
-  delay(1000);
-  
-  if (Serial.available()) {
-    String response = Serial.readString();
-    if (response.indexOf("GRANTED") >= 0) {
-      digitalWrite(7, HIGH); // Green LED
-      // Open door relay
-      delay(3000);
-      digitalWrite(7, LOW);
-    } else {
-      digitalWrite(6, HIGH); // Red LED
-      delay(1000);
-      digitalWrite(6, LOW);
-    }
-  }
-}
-```
-
-### Raspberry Pi (Python listener on Arduino)
-
-```python
-#!/usr/bin/env python3
-import serial
-import requests
-
-SERIAL_PORT = '/dev/ttyUSB0'  # Arduino connected here
-SERVER_URL = 'http://localhost:5000'
-
-ser = serial.Serial(SERIAL_PORT, 9600)
-
-def send_auth(card_id, zone_id):
-    resp = requests.post(f'{SERVER_URL}/api/authenticate', json={
-        'card_id': card_id,
-        'zone_id': int(zone_id),
-        'method': 'card'
-    })
-    data = resp.json()
-    
-    if data.get('success'):
-        ser.write(b'GRANTED\n')
-        log_access(card_id, zone_id, 'entry', True)
-    else:
-        ser.write(b'DENIED\n')
-        log_access(card_id, zone_id, 'denied', False)
-
-def log_access(card_id, zone_id, action, success):
-    requests.post(f'{SERVER_URL}/api/access-log', json={
-        'card_id': card_id,
-        'zone_id': int(zone_id),
-        'method': 'card',
-        'action': action,
-        'success': success
-    })
-
-while True:
-    if ser.in_waiting:
-        line = ser.readline().decode().strip()
-        if line.startswith('AUTH:'):
-            parts = line.split(':')
-            if len(parts) == 3:
-                send_auth(parts[1], parts[2])
-```
-
-### Face Recognition Option
-
-For face recognition, use a separate camera module:
+### Authentication Flow
 
 ```
-┌─────────────┐         ┌─────────────┐
-│   Pi +      │────────▶│   Server    │
-│   Camera    │  HTTP   │             │
-│  (faceapi)  │         │             │
-└─────────────┘         └─────────────┘
-       │                        │
-       │ Permission            │ Dashboard
-       ▼                        ▼
-   NFC Card                 Admin Panel
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│   Student    │     │   Arduino    │     │     Pi       │
+│  (Tap Card)  │     │  (NFC Read)  │     │  (Python)    │
+└──────┬───────┘     └──────┬───────┘     └──────┬───────┘
+       │                     │                      │
+       │  UID:A1B2C3D4      │                      │
+       │────────────────────►│                      │
+       │                     │                      │
+       │                     │  UID,A1B2C3D4        │
+       │                     │────────────────────►│
+       │                     │                      │
+       │                     │         ┌───────────┴───────────┐
+       │                     │         │  1. Validate Card    │
+       │                     │         │  2. Check Zone       │
+       │                     │         │  3. Check Capacity   │
+       │                     │         └───────────┬───────────┘
+       │                     │                      │
+       │                     │    POST /api/authenticate
+       │                     │ ────────────────────►│ Server
+       │                     │                      │
+       │                     │         ┌───────────┴───────────┐
+       │                     │         │  Validate API Key   │
+       │                     │         │  Check User Status  │
+       │                     │         │  Check Zone Access │
+       │                     │         └───────────┬───────────┘
+       │                     │                      │
+       │                     │   {success: true}   │
+       │                     │◄─────────────────────│
+       │                     │                      │
+       │                     │  VERIFIED/NOT_AUTH   │
+       │                     │◄─────────────────────│
+       │                     │                      │
+       │         ┌──────────┴──────────┐            │
+       │         │  If verified:      │            │
+       │         │  - Face Check     │            │
+       │         │  - Log Access     │            │
+       │         │  - Update Count   │            │
+       │         └───────────────────┘            │
+       │                                          │
+       ▼                                          ▼
+┌──────────────┐                         ┌──────────────┐
+│  Door Opens │                         │  Server DB   │
+│  (Relay)    │                         │  Updated    │
+└──────────────┘                         └──────────────┘
 ```
 
-**Flow:**
-1. User taps NFC card
-2. Camera captures face
-3. Server verifies card + face match
-4. Door opens if both valid
+### Access Log Flow
 
-### GPIO Door Control
-
-Connect relay module to Pi GPIO:
-
-```python
-import RPi.GPIO as GPIO
-
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(17, GPIO.OUT)  # Door relay
-
-def unlock_door():
-    GPIO.output(17, GPIO.HIGH)
-    time.sleep(3)
-    GPIO.output(17, GPIO.LOW)
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    ACCESS LOGGING FLOW                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  User Access Event                                              │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  Pi sends POST /api/access-log                         │    │
+│  │  {card_id, zone_id, action, method, success}           │    │
+│  └─────────────────────────┬───────────────────────────────┘    │
+│                            │                                    │
+│                            ▼                                    │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  Server Processing:                                    │    │
+│  │  1. Validate API Key                                  │    │
+│  │  2. Find user by card_id                              │    │
+│  │  3. Create AccessLog record                           │    │
+│  │  4. Update zone occupancy (+1 entry, -1 exit)        │    │
+│  └─────────────────────────┬───────────────────────────────┘    │
+│                            │                                    │
+│                            ▼                                    │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  DATABASE                                             │    │
+│  │  Table: access_logs                                   │    │
+│  │  ┌────┬───────┬────────┬────────┬────────────────┐  │    │
+│  │  │ id │user_id│ zone_id│ action  │ timestamp      │  │    │
+│  │  ├───┼───────┼────────┼────────┼────────────────┤  │    │
+│  │  │ 1 │ STU001 │   1    │ entry  │ 2026-03-03 09 │  │    │
+│  │  │ 2 │ STU001 │   1    │ exit   │ 2026-03-03 10 │  │    │
+│  │  └────┴───────┴────────┴────────┴────────────────┘  │    │
+│  │                                                       │    │
+│  │  Table: zones                                        │    │
+│  │  ┌────┬────────────┬────────────┬──────────────┐   │    │
+│  │  │ id │    name    │max_capacity│current_occ   │   │    │
+│  │  ├───┼────────────┼────────────┼──────────────┤   │    │
+│  │  │ 1 │ Computer 1 │    30     │     5        │   │    │
+│  │  └────┴────────────┴────────────┴──────────────┘   │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Configuration
+## Database Schema
 
-### Database
+### Entity Relationship Diagram
 
-Currently using SQLite. To use PostgreSQL in production:
-
-```go
-// In main.go, change:
-db, err = gorm.Open(sqlite.Open("sentinel.db"), &gorm.Config{})
-// To:
-db, err = gorm.Open(postgres.Open("host=user dbname=sentinel sslmode=disable"), &gorm.Config{})
+```
+┌─────────────┐         ┌─────────────┐         ┌─────────────┐
+│    Admin    │         │    User     │         │    Zone     │
+├─────────────┤         ├─────────────┤         ├─────────────┤
+│ id (PK)     │         │ id (PK)     │         │ id (PK)     │
+│ username    │         │ user_id     │         │ name        │
+│ password_hash│         │ name        │         │ description │
+└─────────────┘         │ email       │         │ max_capacity│
+                        │ role        │         │ is_restricted
+                        │ status      │         └──────┬──────┘
+                        │ card_id     │                │
+                        │ face_encoding│               │
+                        └──────┬──────┘                │
+                               │                       │
+                               │ 1:N                   │
+                               ▼                       │
+                        ┌─────────────┐                │
+                        │ AccessLog  │                │
+                        ├─────────────┤                │
+                        │ id (PK)     │◄──────────────┘
+                        │ user_id (FK)│
+                        │ zone_id (FK)│
+                        │ action      │
+                        │ method      │
+                        │ timestamp   │
+                        │ notes       │
+                        └─────────────┘
 ```
 
-Then install PostgreSQL driver:
-```bash
-go get gorm.io/driver/postgres
-```
+### Table Definitions
 
-### Secret Key
+```sql
+-- Admins (system users)
+CREATE TABLE admins (
+    id INTEGER PRIMARY KEY,
+    username VARCHAR(80) UNIQUE NOT NULL,
+    password_hash VARCHAR(128) NOT NULL
+);
 
-Change the secret key in `main.go`:
+-- Users (students, faculty, staff)
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    user_id VARCHAR(20) UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(120),
+    role VARCHAR(20) DEFAULT 'student',
+    status VARCHAR(20) DEFAULT 'active',
+    card_id VARCHAR(50),
+    face_encoding TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-```go
-store := cookie.NewStore([]byte("your-secure-secret-key"))
-```
+-- Zones (buildings, labs, rooms)
+CREATE TABLE zones (
+    id INTEGER PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description VARCHAR(200),
+    max_capacity INTEGER DEFAULT 50,
+    current_occupancy INTEGER DEFAULT 0,
+    is_restricted BOOLEAN DEFAULT FALSE
+);
 
-Generate a random key:
-```bash
-openssl rand -hex 32
-```
-
-### Add Users with Card IDs
-
-Users need a `card_id` to authenticate. When creating users via API:
-
-```bash
-curl -X POST http://localhost:5000/api/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "STU003",
-    "name": "New Student",
-    "email": "new@campus.edu",
-    "role": "student",
-    "card_id": "A1B2C3D4"
-  }'
+-- Access Logs
+CREATE TABLE access_logs (
+    id INTEGER PRIMARY KEY,
+    user_id VARCHAR(20) NOT NULL,
+    zone_id INTEGER NOT NULL,
+    action VARCHAR(20) NOT NULL,
+    method VARCHAR(50),
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (zone_id) REFERENCES zones(id)
+);
 ```
 
 ---
 
-## Production Checklist
+## Security Considerations
 
-### 1. Security
+### Authentication & Authorization
 
-- [ ] Change secret key to a secure random value
-- [ ] Change default admin password
-- [ ] Use HTTPS (reverse proxy with nginx + let's encrypt)
-- [ ] Enable firewall: `sudo ufw allow 5000/tcp`
-- [ ] Add API key authentication for access controller endpoints
+#### 1. Admin Access Control
 
-### 2. Database
+```
+┌─────────────────────────────────────────────────────────────┐
+│              ADMIN AUTHENTICATION FLOW                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────┐     ┌──────────┐     ┌──────────┐           │
+│  │ Browser  │────►│  Login   │────►│ Session  │           │
+│  │          │     │   Form   │     │  Store  │           │
+│  └──────────┘     └──────────┘     └──────────┘           │
+│       │                                   │                │
+│       │  GET /                           │                │
+│       │──────────────────────────────────►                │
+│       │              ┌──────────┐                           │
+│       │              │ Check    │                           │
+│       │              │ Session  │                           │
+│       │              └──────────┘                           │
+│       │                  │                                  │
+│       │           ┌──────┴──────┐                           │
+│       │           │ Valid?       │                           │
+│       │           └──────┬──────┘                           │
+│       │                  │                                  │
+│       ▼                  ▼                                  │
+│  ┌──────────┐     ┌──────────┐                             │
+│  │ Dashboard │◄────│ 200 OK   │                             │
+│  │  Render   │     │          │                             │
+│  └──────────┘     └──────────┘                             │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
 
-- [ ] Migrate from SQLite to PostgreSQL
-- [ ] Set up regular database backups
-- [ ] Configure connection pooling
+**Security Measures:**
+- Session-based authentication with secure cookies
+- Passwords hashed using SHA-256
+- Session validation on every protected request
 
-### 3. Deployment
+#### 2. Access Controller API Security
 
-- [ ] Build release binary:
-  ```bash
-  CGO_ENABLED=0 GOOS=linux GOARCH=arm go build -o sentinel .
-  ```
-- [ ] Set up reverse proxy with nginx
-- [ ] Configure systemd service for auto-start
+```
+┌─────────────────────────────────────────────────────────────┐
+│           ACCESS CONTROLLER API SECURITY                    │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Before processing any request:                              │
+│                                                              │
+│  1. API KEY VALIDATION                                      │
+│     ┌──────────────────────────────────────────┐           │
+│     │ Header: X-API-Key: <secret>              │           │
+│     │ or Form: api_key=<secret>               │           │
+│     └────────────────────┬─────────────────────┘           │
+│                         │                                  │
+│                         ▼                                  │
+│     ┌──────────────────────────────────────────┐           │
+│     │ Compare against API_KEY env variable     │           │
+│     │ Default: dev-api-key-change-in-production│           │
+│     └────────────────────┬─────────────────────┘           │
+│                         │                                  │
+│              ┌──────────┴──────────┐                     │
+│              │ Match?               │                     │
+│              └──────────┬──────────┘                     │
+│                         │                                  │
+│            ┌────────────┴────────────┐                    │
+│            │                         │                    │
+│            ▼                         ▼                    │
+│     ┌─────────────┐          ┌─────────────┐             │
+│     │  200 OK    │          │ 401 Error   │             │
+│     │ Process    │          │ Unauthorized │             │
+│     └─────────────┘          └─────────────┘             │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
 
-Example systemd service (`/etc/systemd/system/sentinel.service`):
+**Security Measures:**
+- API key required for all access controller endpoints
+- Keys stored in environment variables, not in code
+- Separate authentication from admin and hardware
+
+### Data Protection
+
+| Data Type | Protection | Notes |
+|-----------|------------|-------|
+| Admin Password | SHA-256 Hash | Never stored in plaintext |
+| User Card IDs | Plaintext | Needed for NFC matching |
+| Face Templates | Optional | Can be stored as embeddings |
+| Session Cookies | Encrypted | Gin sessions with secure key |
+| API Keys | Environment | Never committed to git |
+
+### Network Security
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    NETWORK SECURITY                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Production Deployment (Recommended):                         │
+│                                                              │
+│  ┌─────────┐     ┌─────────┐     ┌──────────────┐        │
+│  │  User   │     │   Nginx │     │   Sentinel   │        │
+│  │ Browser │────►│ (HTTPS) │────►│   Server    │        │
+│  └─────────┘     └─────────┘     └──────────────┘        │
+│                         │                  │               │
+│                    Let's Encrypt      Internal             │
+│                    Auto-renew         Network              │
+│                                                              │
+│  Firewall Rules:                                             │
+│    - Allow 443 (HTTPS) from external                        │
+│    - Allow 5000 from internal only                         │
+│    - Block all other inbound                               │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Vulnerabilities & Mitigations
+
+| Vulnerability | Risk Level | Mitigation |
+|--------------|-------------|------------|
+| SQL Injection | Low | ORM prevents this (GORM) |
+| XSS | Low | Template auto-escaping |
+| CSRF | Medium | Use gin-csrf middleware in production |
+| Weak API Key | Medium | Require strong key in production |
+| No HTTPS | High | Use reverse proxy with TLS |
+| Default Credentials | High | Change admin password immediately |
+| Unrestricted Access | High | Firewall rules |
+
+---
+
+## Ethical Considerations
+
+### Privacy
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    PRIVACY CONSIDERATIONS                    │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  DATA COLLECTED:                                            │
+│  ├─ Access times and locations                              │
+│  ├─ Card/ID numbers                                         │
+│  └─ Facial templates (optional)                             │
+│                                                              │
+│  DATA NOT COLLECTED:                                        │
+│  ├─ Location tracking outside campus                        │
+│  ├─ Biometric raw images                                    │
+│  └─ Financial information                                   │
+│                                                              │
+│  USER RIGHTS:                                                │
+│  ├─ Right to access their data                             │
+│  ├─ Right to correction                                    │
+│  └─ Right to deletion (where legal)                        │
+│                                                              │
+│  TRANSPARENCY:                                               │
+│  ├─ Clear signage at entry points                          │
+│  ├─ Privacy policy available                                │
+│  └─ Purpose limitation (security only)                      │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Bias & Fairness
+
+- **Role-based access**: System distinguishes students vs faculty appropriately
+- **No biometric storage by default**: Face templates are optional
+- **Graceful fallbacks**: If face fails, card alone can grant access
+
+### Consent
+
+- Campus-wide notification of security system
+- Opt-in face registration (not mandatory)
+- Alternative authentication always available
+
+---
+
+## Deployment
+
+### Raspberry Pi Setup
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  PI DEPLOYMENT DIAGRAM                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │            Raspberry Pi 3/4/5                       │    │
+│  │  ┌─────────────────────────────────────────────┐   │    │
+│  │  │  Sentinel Access Controller (Python)         │   │    │
+│  │  │  - Serial communication with Arduino         │   │    │
+│  │  │  - Face verification                         │   │    │
+│  │  │  - HTTP calls to server                     │   │    │
+│  │  └─────────────────────────────────────────────┘   │    │
+│  │                      │                              │    │
+│  │              USB / UART │                           │    │
+│  │                      │                              │    │
+│  │  ┌───────────────────┴───────────────────────┐    │    │
+│  │  │  Arduino Nano/Mega                          │    │    │
+│  │  │  - NFC Reader (RC522)                      │    │    │
+│  │  │  - LCD Display                             │    │    │
+│  │  │  - Status LEDs                             │    │    │
+│  │  └───────────────────────────────────────────┘    │    │
+│  │                                                      │    │
+│  │  GPIO:                                               │    │
+│  │    D3  → Green LED (Access)                         │    │
+│  │    D5  → Red LED (Deny)                           │    │
+│  │    D6  → Blue LED (Processing)                    │    │
+│  │    D7  → Relay (Door lock)                         │    │
+│  │                                                      │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                           │                                  │
+│                    Ethernet / WiFi                          │
+│                           │                                  │
+│                           ▼                                  │
+│                    ┌──────────────┐                         │
+│                    │  Campus      │                         │
+│                    │  Network     │                         │
+│                    └──────┬───────┘                         │
+│                           │                                  │
+│                           ▼                                  │
+│                    ┌──────────────┐                         │
+│                    │  Sentinel    │                         │
+│                    │  Server      │                         │
+│                    └──────────────┘                         │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### systemd Service (Pi)
+
 ```ini
 [Unit]
-Description=Sentinel Security System
+Description=Sentinel Access Controller
 After=network.target
 
 [Service]
+Type=simple
 User=pi
-WorkingDirectory=/home/pi/sentinel/backend-go
-ExecStart=/home/pi/sentinel/backend-go/sentinel
+WorkingDirectory=/home/pi/sentinel
+ExecStart=/usr/bin/python3 /home/pi/sentinel/face-check/main.py
+Environment="SERVER_URL=http://192.168.1.100:5000"
+Environment="ZONE_ID=1"
+Environment="API_KEY=your-secure-api-key"
 Restart=always
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Then enable:
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable sentinel
-sudo systemctl start sentinel
-```
-
-### 4. Hardware
-
-- [ ] Install NFC readers at access points
-- [ ] Connect door locks to relays
-- [ ] Set up cameras for face recognition (optional)
-- [ ] Configure UPS for power outages
-
-### 5. Monitoring
-
-- [ ] Set up health check endpoint
-- [ ] Configure logging to file
-- [ ] Set up monitoring (Prometheus, etc.)
-
 ---
 
-## Development
+## API Reference
 
-### Run Development
+### Authentication Required (Admin)
 
-```bash
-cd backend-go
-go run main.go
-```
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | Dashboard |
+| GET/POST | `/login` | Admin login |
+| GET | `/logout` | Logout |
+| GET | `/api/stats` | Dashboard stats |
+| GET | `/api/access-logs` | Access history |
+| GET | `/api/alerts` | System alerts |
+| GET/POST | `/api/users` | User CRUD |
+| GET/POST | `/api/zones` | Zone CRUD |
 
-### Access Controller Testing
+### API Key Required (Hardware)
 
-The access controller has a simulation mode for testing without hardware:
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/authenticate` | Verify card access |
+| POST | `/api/access-log` | Log access event |
+| POST | `/api/door/:id/:action` | Lock/unlock door |
 
-```bash
-cd backend-go/access-controller
-go run main.go
-```
+### Public
 
-Enter card IDs to test authentication:
-- STU001, STU002 - students
-- FAC001 - faculty
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Health check |
+| GET | `/api/occupancy` | Zone occupancy |
 
 ---
 
 ## Troubleshooting
 
-### Database Issues
+### Common Issues
 
-Reset database:
-```bash
-rm backend-go/sentinel.db
-cd backend-go
-go run main.go
-```
+| Issue | Solution |
+|-------|----------|
+| NFC not read | Check serial connection, try different port |
+| Face not detected | Ensure good lighting, camera position |
+| Server unreachable | Check network, firewall rules |
+| API key error | Verify API_KEY matches server |
+| Database locked | Check file permissions |
 
-### Port Already in Use
+### Log Locations
 
-```bash
-# Find process using port 5000
-lsof -i :5000
-# Kill it
-kill <PID>
-```
-
-### Build Errors
-
-Ensure Go is properly installed:
-```bash
-go version
-go mod tidy
-```
-
-### NFC Reader Not Working
-
-1. Check serial connection: `ls -l /dev/ttyUSB0`
-2. Check permissions: `sudo usermod -a -G dialout $USER`
-3. Log out and back in
+- Server: System journal or file
+- Pi: Console output or systemd logs
+- Arduino: Serial monitor
 
 ---
 
 ## License
 
-MIT
+MIT License - See LICENSE file for details
