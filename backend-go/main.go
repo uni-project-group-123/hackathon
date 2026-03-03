@@ -96,6 +96,13 @@ func main() {
 	r.GET("/api/zones", authRequired(), getZones)
 	r.POST("/api/zones", authRequired(), createZone)
 
+	// Access controller endpoints (no auth for Pi devices)
+	r.POST("/api/authenticate", authenticate)
+	r.POST("/api/access-log", logAccess)
+	r.GET("/api/occupancy", getOccupancy)
+	r.POST("/api/door/:zone_id/:action", controlDoor)
+	r.GET("/api/health", healthCheck)
+
 	r.Run(":5000")
 }
 
@@ -125,9 +132,9 @@ func initDB() {
 	db.Model(&User{}).Count(&count)
 	if count == 0 {
 		users := []User{
-			{UserID: "STU001", Name: "John Doe", Email: "john@campus.edu", Role: "student", Status: "active"},
-			{UserID: "STU002", Name: "Jane Smith", Email: "jane@campus.edu", Role: "student", Status: "active"},
-			{UserID: "FAC001", Name: "Dr. Emily Brown", Email: "emily@campus.edu", Role: "faculty", Status: "active"},
+			{UserID: "STU001", Name: "John Doe", Email: "john@campus.edu", Role: "student", Status: "active", CardID: "STU001"},
+			{UserID: "STU002", Name: "Jane Smith", Email: "jane@campus.edu", Role: "student", Status: "active", CardID: "STU002"},
+			{UserID: "FAC001", Name: "Dr. Emily Brown", Email: "emily@campus.edu", Role: "faculty", Status: "active", CardID: "FAC001"},
 		}
 		db.Create(&users)
 
@@ -382,4 +389,196 @@ func createZone(c *gin.Context) {
 
 	db.Create(&zone)
 	c.JSON(http.StatusOK, gin.H{"success": true, "zone": zone})
+}
+
+// Access Controller Endpoints
+
+func authenticate(c *gin.Context) {
+	var input struct {
+		CardID    string `json:"card_id"`
+		ZoneID    int    `json:"zone_id"`
+		Method    string `json:"method"`
+		Timestamp string `json:"timestamp"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Find user by card ID
+	var user User
+	if err := db.Where("card_id = ?", input.CardID).First(&user).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "Card not registered",
+		})
+		return
+	}
+
+	// Check if user is active
+	if user.Status != "active" {
+		c.JSON(http.StatusOK, gin.H{
+			"success":   false,
+			"user_id":   user.UserID,
+			"user_name": user.Name,
+			"message":   "User account is " + user.Status,
+		})
+		return
+	}
+
+	// Check zone restrictions
+	var zone Zone
+	if err := db.First(&zone, input.ZoneID).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "Invalid zone",
+		})
+		return
+	}
+
+	// Faculty can access restricted zones, students need permission
+	if zone.IsRestricted && user.Role == "student" {
+		c.JSON(http.StatusOK, gin.H{
+			"success":   false,
+			"user_id":   user.UserID,
+			"user_name": user.Name,
+			"message":   "Access denied: Restricted area",
+		})
+		return
+	}
+
+	// Check capacity
+	if zone.CurrentOccupancy >= zone.MaxCapacity {
+		c.JSON(http.StatusOK, gin.H{
+			"success":   false,
+			"user_id":   user.UserID,
+			"user_name": user.Name,
+			"message":   "Zone at maximum capacity",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":   true,
+		"user_id":   user.UserID,
+		"user_name": user.Name,
+		"message":   "Access granted",
+		"role":      user.Role,
+	})
+}
+
+func logAccess(c *gin.Context) {
+	var input struct {
+		CardID    string `json:"card_id"`
+		ZoneID    int    `json:"zone_id"`
+		Method    string `json:"method"`
+		Timestamp string `json:"timestamp"`
+		Action    string `json:"action"`
+		Success   bool   `json:"success"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Find user by card ID
+	var user User
+	db.Where("card_id = ?", input.CardID).First(&user)
+
+	// Determine action (entry/exit/denied)
+	action := input.Action
+	if action == "" {
+		action = "denied"
+	}
+
+	// Log the access
+	accessLog := AccessLog{
+		UserID:    user.UserID,
+		ZoneID:    uint(input.ZoneID),
+		Action:    action,
+		Method:    input.Method,
+		Timestamp: time.Now(),
+	}
+
+	if input.Success {
+		// Update zone occupancy
+		var zone Zone
+		if db.First(&zone, input.ZoneID).Error == nil {
+			if action == "entry" {
+				zone.CurrentOccupancy++
+			} else if action == "exit" && zone.CurrentOccupancy > 0 {
+				zone.CurrentOccupancy--
+			}
+			db.Save(&zone)
+		}
+	}
+
+	db.Create(&accessLog)
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func getOccupancy(c *gin.Context) {
+	var zones []Zone
+	db.Find(&zones)
+
+	occupancy := make([]gin.H, len(zones))
+	for i, z := range zones {
+		occupancy[i] = gin.H{
+			"zone_id":           z.ID,
+			"zone_name":         z.Name,
+			"current_occupancy": z.CurrentOccupancy,
+			"max_capacity":      z.MaxCapacity,
+			"percentage":        float64(z.CurrentOccupancy) / float64(z.MaxCapacity) * 100,
+		}
+	}
+
+	c.JSON(http.StatusOK, occupancy)
+}
+
+func controlDoor(c *gin.Context) {
+	zoneID := c.Param("zone_id")
+	action := c.Param("action")
+
+	var zone Zone
+	if err := db.First(&zone, zoneID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Zone not found"})
+		return
+	}
+
+	if action == "unlock" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "Door unlocked for " + zone.Name,
+		})
+	} else if action == "lock" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "Door locked for " + zone.Name,
+		})
+	} else if action == "status" {
+		c.JSON(http.StatusOK, gin.H{
+			"zone_id":   zone.ID,
+			"zone_name": zone.Name,
+			"locked":    zone.IsRestricted,
+		})
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid action"})
+	}
+}
+
+func healthCheck(c *gin.Context) {
+	var userCount int64
+	var zoneCount int64
+	db.Model(&User{}).Count(&userCount)
+	db.Model(&Zone{}).Count(&zoneCount)
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":    "healthy",
+		"timestamp": time.Now().Format(time.RFC3339),
+		"users":     userCount,
+		"zones":     zoneCount,
+		"database":  "connected",
+	})
 }

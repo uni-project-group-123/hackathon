@@ -12,26 +12,30 @@ Sentinel is a campus safety and security system that provides:
 
 ```
 sentinel/
-├── backend/               # Go API server
-│   ├── main.go            # Main application
-│   ├── go.mod             # Go module
-│   ├── go.sum             # Dependencies
-│   ├── sentinel           # Compiled binary
-│   ├── sentinel.db        # SQLite database
-│   └── templates/         # HTML templates
-│       ├── index.html     # Admin dashboard
-│       └── login.html     # Login page
-├── frontend/              # Future: React Native app, etc.
-├── brief.md               # Project brief
-├── plan.md               # Development plan
-└── documentation.md       # This file
+├── backend-go/                  # Go API server
+│   ├── main.go                 # Main application
+│   ├── go.mod                 # Go module
+│   ├── go.sum                 # Dependencies
+│   ├── sentinel               # Compiled binary
+│   ├── sentinel.db            # SQLite database
+│   ├── build.sh               # Build script
+│   ├── start.sh               # Start script
+│   └── access-controller/     # Pi access controller
+│       └── main.go           # Access controller code
+├── frontend/                   # Web frontend
+│   └── templates/            # HTML templates
+│       ├── index.html        # Admin dashboard
+│       └── login.html        # Login page
+├── .github/workflows/          # CI/CD
+│   └── build.yml             # Build workflow
+├── brief.md                   # Project brief
+├── plan.md                   # Development plan
+└── documentation.md          # This file
 ```
 
 ## Quick Start
 
 ### 1. Install Go
-
-If Go is not installed:
 
 ```bash
 # On Raspberry Pi
@@ -43,7 +47,7 @@ sudo apt install golang
 ### 2. Run the Server
 
 ```bash
-cd backend
+cd backend-go
 go mod download
 go run main.go
 ```
@@ -68,16 +72,19 @@ Default credentials:
 - Username: `admin`
 - Password: `admin123`
 
-## Building
+### 4. Default Data
 
-```bash
-cd backend
-go build -o sentinel .
-```
+The server creates sample users with card IDs:
 
-This creates a standalone binary that can be run on any system with the same architecture.
+| User ID | Name | Role | Card ID | Can Access |
+|---------|------|------|---------|------------|
+| STU001 | John Doe | student | STU001 | Computer Lab, Library |
+| STU002 | Jane Smith | student | STU002 | Computer Lab, Library |
+| FAC001 | Dr. Emily Brown | faculty | FAC001 | All zones |
 
 ## API Endpoints
+
+### Admin Endpoints (require login)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -85,11 +92,303 @@ This creates a standalone binary that can be run on any system with the same arc
 | `/logout` | GET | Logout |
 | `/` | GET | Admin dashboard |
 | `/api/stats` | GET | Dashboard statistics |
-| `/api/access-logs` | GET | Access logs |
+| `/api/access-logs` | GET | Access logs (50 most recent) |
 | `/api/alerts` | GET | System alerts |
+| `/api/alerts/:id` | POST | Update alert status |
 | `/api/users` | GET/POST | List/Create users |
-| `/api/users/<id>` | PUT/DELETE | Update/Delete user |
+| `/api/users/:id` | PUT/DELETE | Update/Delete user |
 | `/api/zones` | GET/POST | List/Create zones |
+| `/api/occupancy` | GET | Live occupancy per zone |
+
+### Access Controller Endpoints (no auth)
+
+These endpoints are used by Pi/Arduino devices at access points.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/authenticate` | POST | Validate card access |
+| `/api/access-log` | POST | Log entry/exit/denied |
+| `/api/door/:zone_id/:action` | POST | Lock/unlock/status door |
+| `/api/health` | GET | Health check |
+
+---
+
+## Access Controller API Examples
+
+### 1. Authenticate a Card
+
+Used by Arduino/Pi to verify if a card has access.
+
+**Request:**
+```bash
+curl -X POST http://localhost:5000/api/authenticate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "card_id": "STU001",
+    "zone_id": 1,
+    "method": "card"
+  }'
+```
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "user_id": "STU001",
+  "user_name": "John Doe",
+  "message": "Access granted",
+  "role": "student"
+}
+```
+
+**Denied Response:**
+```json
+{
+  "success": false,
+  "user_id": "STU001",
+  "user_name": "John Doe",
+  "message": "Access denied: Restricted area"
+}
+```
+
+### 2. Log Access Event
+
+Log when someone enters or exits.
+
+**Request:**
+```bash
+curl -X POST http://localhost:5000/api/access-log \
+  -H "Content-Type: application/json" \
+  -d '{
+    "card_id": "STU001",
+    "zone_id": 1,
+    "method": "card",
+    "action": "entry",
+    "success": true
+  }'
+```
+
+### 3. Get Live Occupancy
+
+Get current occupancy for all zones.
+
+**Request:**
+```bash
+curl http://localhost:5000/api/occupancy
+```
+
+**Response:**
+```json
+[
+  {
+    "zone_id": 1,
+    "zone_name": "Computer Lab 1",
+    "current_occupancy": 5,
+    "max_capacity": 30,
+    "percentage": 16.67
+  },
+  {
+    "zone_id": 2,
+    "zone_name": "Chemistry Lab",
+    "current_occupancy": 2,
+    "max_capacity": 20,
+    "percentage": 10
+  }
+]
+```
+
+### 4. Control Door
+
+Lock/unlock a door or get status.
+
+```bash
+# Unlock door for zone 1
+curl -X POST http://localhost:5000/api/door/1/unlock
+
+# Lock door for zone 1
+curl -X POST http://localhost:5000/api/door/1/lock
+
+# Get door status
+curl http://localhost:5000/api/door/1/status
+```
+
+### 5. Health Check
+
+```bash
+curl http://localhost:5000/api/health
+```
+
+---
+
+## Hardware Integration
+
+### Architecture
+
+```
+┌─────────────┐         ┌─────────────┐
+│   Arduino   │────────▶│   Server    │
+│  + NFC RC522│  HTTP   │  (Pi/Cloud) │
+│  + Camera   │         │             │
+└─────────────┘         └─────────────┘
+       │                        │
+       │ LED/Buzzer            │ Web Dashboard
+       ▼                        ▼
+   Door Lock               Admin Panel
+```
+
+### Arduino Setup
+
+Connect Arduino to Raspberry Pi via USB serial or Ethernet.
+
+**Arduino Code (sketch):**
+
+```cpp
+#include <SPI.h>
+#include <MFRC522.h>
+#include <SoftwareSerial.h>
+
+#define RST_PIN 9
+#define SS_PIN 10
+
+MFRC522 rfid(SS_PIN, RST_PIN);
+SoftwareSerial espSerial(2, 3); // RX, TX - connect to ESP01
+
+String serverIP = "192.168.1.100"; // Your Pi IP
+String zoneId = "1";
+
+void setup() {
+  Serial.begin(9600);
+  SPI.begin();
+  rfid.PCD_Init();
+  espSerial.begin(9600);
+  
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(7, OUTPUT); // Green LED
+  pinMode(6, OUTPUT); // Red LED
+}
+
+void loop() {
+  if (!rfid.PICC_IsNewCardPresent()) return;
+  if (!rfid.PICC_ReadCardSerial()) return;
+  
+  String cardUID = "";
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    cardUID += String(rfid.uid.uidByte[i], HEX);
+  }
+  
+  Serial.println("Card: " + cardUID);
+  authenticateCard(cardUID);
+  
+  rfid.PICC_HaltA();
+}
+
+void authenticateCard(String cardUID) {
+  // Send to server via Serial (Pi receives this)
+  Serial.println("AUTH:" + cardUID + ":" + zoneId);
+  
+  // Wait for response from Pi
+  delay(1000);
+  
+  if (Serial.available()) {
+    String response = Serial.readString();
+    if (response.indexOf("GRANTED") >= 0) {
+      digitalWrite(7, HIGH); // Green LED
+      // Open door relay
+      delay(3000);
+      digitalWrite(7, LOW);
+    } else {
+      digitalWrite(6, HIGH); // Red LED
+      delay(1000);
+      digitalWrite(6, LOW);
+    }
+  }
+}
+```
+
+### Raspberry Pi (Python listener on Arduino)
+
+```python
+#!/usr/bin/env python3
+import serial
+import requests
+
+SERIAL_PORT = '/dev/ttyUSB0'  # Arduino connected here
+SERVER_URL = 'http://localhost:5000'
+
+ser = serial.Serial(SERIAL_PORT, 9600)
+
+def send_auth(card_id, zone_id):
+    resp = requests.post(f'{SERVER_URL}/api/authenticate', json={
+        'card_id': card_id,
+        'zone_id': int(zone_id),
+        'method': 'card'
+    })
+    data = resp.json()
+    
+    if data.get('success'):
+        ser.write(b'GRANTED\n')
+        log_access(card_id, zone_id, 'entry', True)
+    else:
+        ser.write(b'DENIED\n')
+        log_access(card_id, zone_id, 'denied', False)
+
+def log_access(card_id, zone_id, action, success):
+    requests.post(f'{SERVER_URL}/api/access-log', json={
+        'card_id': card_id,
+        'zone_id': int(zone_id),
+        'method': 'card',
+        'action': action,
+        'success': success
+    })
+
+while True:
+    if ser.in_waiting:
+        line = ser.readline().decode().strip()
+        if line.startswith('AUTH:'):
+            parts = line.split(':')
+            if len(parts) == 3:
+                send_auth(parts[1], parts[2])
+```
+
+### Face Recognition Option
+
+For face recognition, use a separate camera module:
+
+```
+┌─────────────┐         ┌─────────────┐
+│   Pi +      │────────▶│   Server    │
+│   Camera    │  HTTP   │             │
+│  (faceapi)  │         │             │
+└─────────────┘         └─────────────┘
+       │                        │
+       │ Permission            │ Dashboard
+       ▼                        ▼
+   NFC Card                 Admin Panel
+```
+
+**Flow:**
+1. User taps NFC card
+2. Camera captures face
+3. Server verifies card + face match
+4. Door opens if both valid
+
+### GPIO Door Control
+
+Connect relay module to Pi GPIO:
+
+```python
+import RPi.GPIO as GPIO
+
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(17, GPIO.OUT)  # Door relay
+
+def unlock_door():
+    GPIO.output(17, GPIO.HIGH)
+    time.sleep(3)
+    GPIO.output(17, GPIO.LOW)
+```
+
+---
 
 ## Configuration
 
@@ -122,18 +421,23 @@ Generate a random key:
 openssl rand -hex 32
 ```
 
-### Admin Credentials
+### Add Users with Card IDs
 
-Default admin is created on first run. To add more admins or reset:
+Users need a `card_id` to authenticate. When creating users via API:
 
-```go
-// Add to main.go temporarily
-admin := Admin{
-    Username:     "admin",
-    PasswordHash: hashPassword("your-new-password"),
-}
-db.Create(&admin)
+```bash
+curl -X POST http://localhost:5000/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "STU003",
+    "name": "New Student",
+    "email": "new@campus.edu",
+    "role": "student",
+    "card_id": "A1B2C3D4"
+  }'
 ```
+
+---
 
 ## Production Checklist
 
@@ -143,7 +447,7 @@ db.Create(&admin)
 - [ ] Change default admin password
 - [ ] Use HTTPS (reverse proxy with nginx + let's encrypt)
 - [ ] Enable firewall: `sudo ufw allow 5000/tcp`
-- [ ] Consider rate limiting on login endpoint
+- [ ] Add API key authentication for access controller endpoints
 
 ### 2. Database
 
@@ -168,8 +472,8 @@ After=network.target
 
 [Service]
 User=pi
-WorkingDirectory=/home/pi/sentinel/backend
-ExecStart=/home/pi/sentinel/backend/sentinel
+WorkingDirectory=/home/pi/sentinel/backend-go
+ExecStart=/home/pi/sentinel/backend-go/sentinel
 Restart=always
 
 [Install]
@@ -183,15 +487,12 @@ sudo systemctl enable sentinel
 sudo systemctl start sentinel
 ```
 
-- [ ] Set up log rotation
+### 4. Hardware
 
-### 4. Hardware Integration
-
-To connect physical hardware (NFC readers, cameras):
-
-1. **NFC Reader**: Use `github.com/eblot/go-scard` or similar library
-2. **Camera**: Use OpenCV or picamera for face recognition
-3. **Door Controller**: Use GPIO pins on Raspberry Pi or MQTT
+- [ ] Install NFC readers at access points
+- [ ] Connect door locks to relays
+- [ ] Set up cameras for face recognition (optional)
+- [ ] Configure UPS for power outages
 
 ### 5. Monitoring
 
@@ -199,36 +500,31 @@ To connect physical hardware (NFC readers, cameras):
 - [ ] Configure logging to file
 - [ ] Set up monitoring (Prometheus, etc.)
 
+---
+
 ## Development
-
-### Add New Features
-
-1. **Add new database model** in `main.go`:
-```go
-type NewModel struct {
-    ID    uint   `gorm:"primaryKey" json:"id"`
-    Field string `json:"field"`
-}
-```
-
-2. **Add API endpoint**:
-```go
-func getNewModel(c *gin.Context) {
-    var items []NewModel
-    db.Find(&items)
-    c.JSON(http.StatusOK, items)
-}
-
-// Add route
-r.GET("/api/new-model", authRequired(), getNewModel)
-```
 
 ### Run Development
 
 ```bash
-cd backend
+cd backend-go
 go run main.go
 ```
+
+### Access Controller Testing
+
+The access controller has a simulation mode for testing without hardware:
+
+```bash
+cd backend-go/access-controller
+go run main.go
+```
+
+Enter card IDs to test authentication:
+- STU001, STU002 - students
+- FAC001 - faculty
+
+---
 
 ## Troubleshooting
 
@@ -236,8 +532,8 @@ go run main.go
 
 Reset database:
 ```bash
-rm backend/sentinel.db
-cd backend
+rm backend-go/sentinel.db
+cd backend-go
 go run main.go
 ```
 
@@ -257,6 +553,14 @@ Ensure Go is properly installed:
 go version
 go mod tidy
 ```
+
+### NFC Reader Not Working
+
+1. Check serial connection: `ls -l /dev/ttyUSB0`
+2. Check permissions: `sudo usermod -a -G dialout $USER`
+3. Log out and back in
+
+---
 
 ## License
 
