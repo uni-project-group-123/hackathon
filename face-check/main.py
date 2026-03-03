@@ -11,7 +11,7 @@ CAMERA_INDEX = 0
 USERS_DIR = "users"
 MODELS_DIR = "models"
 
-SERVER_URL = os.environ.get("SERVER_URL", "http://localhost:5000")
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:5000")
 ZONE_ID = int(os.environ.get("ZONE_ID", "1"))
 
 DET_MODEL = os.path.join(MODELS_DIR, "face_detection_yunet_2023mar.onnx")
@@ -77,6 +77,63 @@ def get_embedding_from_face(img_bgr, face, face_recognizer):
     aligned = face_recognizer.alignCrop(img_bgr, face)
     emb = face_recognizer.feature(aligned)
     return emb
+def backend_authenticate(card_id: str) -> dict:
+    """Call backend /api/authenticate to verify card access."""
+    try:
+        resp = requests.post(
+            f"{BACKEND_URL}/api/authenticate",
+            json={
+                "card_id": card_id,
+                "zone_id": ZONE_ID,
+                "method": "Face Recognition",
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            },
+            timeout=5,
+        )
+        data = resp.json()
+        print(f"[BACKEND] authenticate: {data}")
+        return data
+    except Exception as e:
+        print(f"[BACKEND] authenticate error: {e}")
+        return {"success": False, "message": str(e)}
+
+
+def backend_log_access(card_id: str, action: str, success: bool):
+    """Call backend /api/access-log to record the event."""
+    try:
+        resp = requests.post(
+            f"{BACKEND_URL}/api/access-log",
+            json={
+                "card_id": card_id,
+                "zone_id": ZONE_ID,
+                "method": "Face Recognition",
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "action": action,
+                "success": success,
+            },
+            timeout=5,
+        )
+        data = resp.json()
+        print(f"[BACKEND] access-log: {data}")
+    except Exception as e:
+        print(f"[BACKEND] access-log error: {e}")
+
+
+def backend_get_suggested_action(card_id: str) -> str:
+    """Query backend for the user's last action to determine entry/exit."""
+    try:
+        resp = requests.get(
+            f"{BACKEND_URL}/api/last-action",
+            params={"card_id": card_id, "zone_id": ZONE_ID},
+            timeout=5,
+        )
+        data = resp.json()
+        suggested = data.get("suggested_action", "entry")
+        print(f"[BACKEND] last-action: {data} -> suggested: {suggested}")
+        return suggested
+    except Exception as e:
+        print(f"[BACKEND] last-action error: {e}, defaulting to entry")
+        return "entry"
 
 
 def overlay_inset(frame, inset_img, uid_text, status_text=None):
@@ -116,42 +173,6 @@ def overlay_inset(frame, inset_img, uid_text, status_text=None):
             cv2.LINE_AA,
         )
 
-
-API_KEY = os.getenv("API_KEY", "face-scan-secure-key-2024")
-
-
-def send_to_server(card_id: str, method: str = "face"):
-    """Send authentication request to server with API key header."""
-    try:
-        resp = requests.post(
-            f"{SERVER_URL}/api/authenticate",
-            json={"card_id": card_id, "zone_id": ZONE_ID, "method": method},
-            headers={"X-API-Key": API_KEY},
-            timeout=5,
-        )
-        return resp.json()
-    except Exception as e:
-        print(f"[ERROR] Server auth failed: {e}")
-        return {"success": False, "message": "Server error"}
-
-
-def log_access_to_server(card_id: str, action: str, success: bool):
-    """Log access event to server with API key header."""
-    try:
-        requests.post(
-            f"{SERVER_URL}/api/access-log",
-            json={
-                "card_id": card_id,
-                "zone_id": ZONE_ID,
-                "method": "face",
-                "action": action,
-                "success": success,
-            },
-            headers={"X-API-Key": API_KEY},
-            timeout=5,
-        )
-    except Exception as e:
-        print(f"[ERROR] Failed to log access: {e}")
 
 
 def verify_live_with_gui(
@@ -328,8 +349,6 @@ def main():
 
     port = find_arduino_port()
     print(f"[INFO] Arduino port: {port}")
-    print(f"[INFO] Server URL: {SERVER_URL}")
-    print(f"[INFO] Zone ID: {ZONE_ID}")
 
     cap = cv2.VideoCapture(CAMERA_INDEX)
     if not cap.isOpened():
@@ -338,6 +357,13 @@ def main():
     for _ in range(5):
         cap.read()
     print("[INFO] Camera ready.")
+
+    # Check backend connectivity
+    try:
+        r = requests.get(f"{BACKEND_URL}/api/health", timeout=3)
+        print(f"[INFO] Backend connected: {r.json()}")
+    except Exception as e:
+        print(f"[WARN] Cannot reach backend at {BACKEND_URL}: {e}")
 
     try:
         with serial.Serial(port, BAUD, timeout=0.2) as ser:
@@ -358,29 +384,18 @@ def main():
                     continue
 
                 uid = line.split(",", 1)[1].strip()
-
-                # Send to server - first verify card is registered
-                server_resp = send_to_server(uid, "face")
-                print(f"[SERVER] {server_resp}")
-
-                if not server_resp.get("success"):
-                    print(f"[WARN] Card not authorized: {uid}")
-                    ser.write(b"RESULT,NOT_AUTHORIZED\n")
-                    log_access_to_server(uid, "denied", False)
-                    continue
+                print(f"[INFO] Card scanned: {uid}")
 
                 ref_path = uid_to_path(uid)
                 if not os.path.exists(ref_path):
                     print(f"[WARN] Missing photo: {ref_path}")
                     ser.write(b"RESULT,NO_PHOTO\n")
-                    log_access_to_server(uid, "denied", False)
                     continue
 
                 ref_img = cv2.imread(ref_path)
                 if ref_img is None:
                     print("[WARN] Cannot load reference image.")
                     ser.write(b"RESULT,NO_PHOTO\n")
-                    log_access_to_server(uid, "denied", False)
                     continue
 
                 ref_small = resize_to_window(ref_img)
@@ -392,7 +407,6 @@ def main():
                 if f is None:
                     print("[WARN] No face found in reference image.")
                     ser.write(b"RESULT,NO_FACE\n")
-                    log_access_to_server(uid, "denied", False)
                     continue
 
                 ref_emb = get_embedding_from_face(ref_small, f, face_recognizer)
@@ -411,11 +425,13 @@ def main():
                     print(f"[INFO] best_sim={best_sim:.3f} ok={ok}")
 
                     if ok:
+                        action = backend_get_suggested_action(uid)
                         ser.write(b"RESULT,CHECKED_VERIFIED\n")
-                        log_access_to_server(uid, "entry", True)
+                        backend_log_access(uid, action, True)
+                        print(f"[INFO] Logged as: {action}")
                     else:
                         ser.write(b"RESULT,CHECKED_UNVERIFIED\n")
-                        log_access_to_server(uid, "denied", False)
+                        backend_log_access(uid, "denied", False)
 
                 except KeyboardInterrupt:
                     print("[INFO] Stopped by user.")
@@ -423,7 +439,6 @@ def main():
                 except Exception as e:
                     print(f"[ERROR] {e}")
                     ser.write(b"RESULT,ERROR\n")
-                    log_access_to_server(uid, "error", False)
     finally:
         cap.release()
         cv2.destroyAllWindows()

@@ -123,6 +123,7 @@ func main() {
 	r.GET("/api/occupancy", getOccupancy)
 	r.POST("/api/door/:zone_id/:action", accessControllerAuth(), controlDoor)
 	r.GET("/api/health", healthCheck)
+	r.GET("/api/last-action", getLastAction)
 
 	r.Run(":5000")
 }
@@ -486,6 +487,45 @@ func authenticate(c *gin.Context) {
 		"user_name": user.Name,
 		"message":   "Access granted",
 		"role":      user.Role,
+	})
+}
+
+func getLastAction(c *gin.Context) {
+	cardID := c.Query("card_id")
+	zoneID := c.Query("zone_id")
+
+	if cardID == "" || zoneID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "card_id and zone_id are required"})
+		return
+	}
+
+	// Find user by card ID
+	var user User
+	if err := db.Where("card_id = ?", cardID).First(&user).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"last_action": "", "message": "User not found"})
+		return
+	}
+
+	// Find the last successful entry/exit log for this user in this zone
+	var lastLog AccessLog
+	err := db.Where("user_id = ? AND zone_id = ? AND action IN ?", user.UserID, zoneID, []string{"entry", "exit"}).
+		Order("timestamp desc").First(&lastLog).Error
+
+	if err != nil {
+		// No previous log — user should enter
+		c.JSON(http.StatusOK, gin.H{"last_action": "", "suggested_action": "entry"})
+		return
+	}
+
+	suggested := "entry"
+	if lastLog.Action == "entry" {
+		suggested = "exit"
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"last_action":      lastLog.Action,
+		"suggested_action": suggested,
+		"last_timestamp":   lastLog.Timestamp.Format("2006-01-02 15:04:05"),
 	})
 }
 
