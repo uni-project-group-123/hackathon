@@ -1,0 +1,6 @@
+# Access Controller Dependencies
+# For Raspberry Pi / Arduino communication
+
+requests>=2.28.0
+pyserial>=3.5
+RPi.GPIO>=0.7.1  # For Pi GPIO control (optional)

@@ -10,10 +10,11 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
-	"gorm.io/driver/sqlite"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
 
+// Use pure Go SQLite for cross-platform compatibility (no CGO required)
 var db *gorm.DB
 
 type Admin struct {
