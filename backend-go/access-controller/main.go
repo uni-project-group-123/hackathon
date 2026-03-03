@@ -18,7 +18,6 @@ type Config struct {
 	BackendURL  string `json:"backend_url"`
 	ZoneID      int    `json:"zone_id"`
 	AccessPoint string `json:"access_point"`
-	APIKey      string `json:"api_key"`
 }
 
 type AuthRequest struct {
@@ -45,7 +44,6 @@ func loadConfig() {
 		BackendURL:  "http://localhost:5000",
 		ZoneID:      1,
 		AccessPoint: "main-door",
-		APIKey:      "",
 	}
 
 	// Try to load from config file
@@ -62,10 +60,6 @@ func loadConfig() {
 	if zoneID := os.Getenv("ZONE_ID"); zoneID != "" {
 		fmt.Sscanf(zoneID, "%d", &config.ZoneID)
 	}
-	if apiKey := os.Getenv("API_KEY"); apiKey != "" {
-		config.APIKey = apiKey
-	}
-
 	log.Printf("Config: Backend=%s, ZoneID=%d, AccessPoint=%s",
 		config.BackendURL, config.ZoneID, config.AccessPoint)
 }
@@ -82,9 +76,6 @@ func authenticate(cardID string) AuthResponse {
 
 	req, _ := http.NewRequest("POST", config.BackendURL+"/api/authenticate", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
-	if config.APIKey != "" {
-		req.Header.Set("X-API-Key", config.APIKey)
-	}
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
@@ -104,9 +95,6 @@ func logAccess(authReq AuthRequest, success bool) {
 
 	req, _ := http.NewRequest("POST", config.BackendURL+"/api/access-log", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
-	if config.APIKey != "" {
-		req.Header.Set("X-API-Key", config.APIKey)
-	}
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	client.Do(req)

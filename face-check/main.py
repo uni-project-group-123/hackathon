@@ -4,11 +4,15 @@ import serial
 import serial.tools.list_ports
 import cv2
 import numpy as np
+import requests
 
 BAUD = 115200
 CAMERA_INDEX = 0
 USERS_DIR = "users"
 MODELS_DIR = "models"
+
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:5000")
+ZONE_ID = int(os.environ.get("ZONE_ID", "1"))
 
 DET_MODEL = os.path.join(MODELS_DIR, "face_detection_yunet_2023mar.onnx")
 REC_MODEL = os.path.join(MODELS_DIR, "face_recognition_sface_2021dec.onnx")
@@ -73,6 +77,63 @@ def get_embedding_from_face(img_bgr, face, face_recognizer):
     aligned = face_recognizer.alignCrop(img_bgr, face)
     emb = face_recognizer.feature(aligned)
     return emb
+def backend_authenticate(card_id: str) -> dict:
+    """Call backend /api/authenticate to verify card access."""
+    try:
+        resp = requests.post(
+            f"{BACKEND_URL}/api/authenticate",
+            json={
+                "card_id": card_id,
+                "zone_id": ZONE_ID,
+                "method": "Face Recognition",
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            },
+            timeout=5,
+        )
+        data = resp.json()
+        print(f"[BACKEND] authenticate: {data}")
+        return data
+    except Exception as e:
+        print(f"[BACKEND] authenticate error: {e}")
+        return {"success": False, "message": str(e)}
+
+
+def backend_log_access(card_id: str, action: str, success: bool):
+    """Call backend /api/access-log to record the event."""
+    try:
+        resp = requests.post(
+            f"{BACKEND_URL}/api/access-log",
+            json={
+                "card_id": card_id,
+                "zone_id": ZONE_ID,
+                "method": "Face Recognition",
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "action": action,
+                "success": success,
+            },
+            timeout=5,
+        )
+        data = resp.json()
+        print(f"[BACKEND] access-log: {data}")
+    except Exception as e:
+        print(f"[BACKEND] access-log error: {e}")
+
+
+def backend_get_suggested_action(card_id: str) -> str:
+    """Query backend for the user's last action to determine entry/exit."""
+    try:
+        resp = requests.get(
+            f"{BACKEND_URL}/api/last-action",
+            params={"card_id": card_id, "zone_id": ZONE_ID},
+            timeout=5,
+        )
+        data = resp.json()
+        suggested = data.get("suggested_action", "entry")
+        print(f"[BACKEND] last-action: {data} -> suggested: {suggested}")
+        return suggested
+    except Exception as e:
+        print(f"[BACKEND] last-action error: {e}, defaulting to entry")
+        return "entry"
 
 
 def overlay_inset(frame, inset_img, uid_text, status_text=None):
@@ -297,6 +358,13 @@ def main():
         cap.read()
     print("[INFO] Camera ready.")
 
+    # Check backend connectivity
+    try:
+        r = requests.get(f"{BACKEND_URL}/api/health", timeout=3)
+        print(f"[INFO] Backend connected: {r.json()}")
+    except Exception as e:
+        print(f"[WARN] Cannot reach backend at {BACKEND_URL}: {e}")
+
     try:
         with serial.Serial(port, BAUD, timeout=0.2) as ser:
             time.sleep(2.0)
@@ -357,9 +425,13 @@ def main():
                     print(f"[INFO] best_sim={best_sim:.3f} ok={ok}")
 
                     if ok:
+                        action = backend_get_suggested_action(uid)
                         ser.write(b"RESULT,CHECKED_VERIFIED\n")
+                        backend_log_access(uid, action, True)
+                        print(f"[INFO] Logged as: {action}")
                     else:
                         ser.write(b"RESULT,CHECKED_UNVERIFIED\n")
+                        backend_log_access(uid, "denied", False)
 
                 except KeyboardInterrupt:
                     print("[INFO] Stopped by user.")
