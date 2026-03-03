@@ -98,7 +98,7 @@ def backend_authenticate(card_id: str) -> dict:
         return {"success": False, "message": str(e)}
 
 
-def backend_log_access(card_id: str, action: str, success: bool):
+def backend_log_access(card_id: str, action: str, success: bool, method: str = "Face Recognition"):
     """Call backend /api/access-log to record the event."""
     try:
         resp = requests.post(
@@ -106,7 +106,7 @@ def backend_log_access(card_id: str, action: str, success: bool):
             json={
                 "card_id": card_id,
                 "zone_id": ZONE_ID,
-                "method": "Face Recognition",
+                "method": method,
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "action": action,
                 "success": success,
@@ -386,16 +386,29 @@ def main():
                 uid = line.split(",", 1)[1].strip()
                 print(f"[INFO] Card scanned: {uid}")
 
+                # Check if card is registered in the backend
+                auth = backend_authenticate(uid)
+                if not auth.get("success") and "not registered" in auth.get("message", "").lower():
+                    print(f"[WARN] Card {uid} not registered in system")
+                    ser.write(b"RESULT,UNKNOWN_CARD\n")
+                    continue
+
                 ref_path = uid_to_path(uid)
                 if not os.path.exists(ref_path):
-                    print(f"[WARN] Missing photo: {ref_path}")
-                    ser.write(b"RESULT,NO_PHOTO\n")
+                    print(f"[WARN] Missing photo: {ref_path} \u2014 logging as unverified")
+                    action = backend_get_suggested_action(uid)
+                    ser.write(b"RESULT,CHECKED_UNVERIFIED_NO_PHOTO\n")
+                    backend_log_access(uid, action, True, method="Card Only (Unverified)")
+                    print(f"[INFO] Logged as: {action} (unverified, no photo)")
                     continue
 
                 ref_img = cv2.imread(ref_path)
                 if ref_img is None:
-                    print("[WARN] Cannot load reference image.")
-                    ser.write(b"RESULT,NO_PHOTO\n")
+                    print("[WARN] Cannot load reference image \u2014 logging as unverified")
+                    action = backend_get_suggested_action(uid)
+                    ser.write(b"RESULT,CHECKED_UNVERIFIED_NO_PHOTO\n")
+                    backend_log_access(uid, action, True, method="Card Only (Unverified)")
+                    print(f"[INFO] Logged as: {action} (unverified, bad image)")
                     continue
 
                 ref_small = resize_to_window(ref_img)
@@ -405,8 +418,11 @@ def main():
                 f = largest_face(faces)
 
                 if f is None:
-                    print("[WARN] No face found in reference image.")
-                    ser.write(b"RESULT,NO_FACE\n")
+                    print("[WARN] No face found in reference image \u2014 logging as unverified")
+                    action = backend_get_suggested_action(uid)
+                    ser.write(b"RESULT,CHECKED_UNVERIFIED_NO_PHOTO\n")
+                    backend_log_access(uid, action, True, method="Card Only (Unverified)")
+                    print(f"[INFO] Logged as: {action} (unverified, no face in ref)")
                     continue
 
                 ref_emb = get_embedding_from_face(ref_small, f, face_recognizer)
@@ -427,11 +443,13 @@ def main():
                     if ok:
                         action = backend_get_suggested_action(uid)
                         ser.write(b"RESULT,CHECKED_VERIFIED\n")
-                        backend_log_access(uid, action, True)
-                        print(f"[INFO] Logged as: {action}")
+                        backend_log_access(uid, action, True, method="Face Recognition")
+                        print(f"[INFO] Logged as: {action} (verified)")
                     else:
+                        action = backend_get_suggested_action(uid)
                         ser.write(b"RESULT,CHECKED_UNVERIFIED\n")
-                        backend_log_access(uid, "denied", False)
+                        backend_log_access(uid, action, True, method="Face Mismatch (Unverified)")
+                        print(f"[INFO] Logged as: {action} (unverified)")
 
                 except KeyboardInterrupt:
                     print("[INFO] Stopped by user.")

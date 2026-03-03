@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/gin-contrib/sessions"
@@ -98,30 +97,11 @@ func main() {
 	r.GET("/api/zones", authRequired(), getZones)
 	r.POST("/api/zones", authRequired(), createZone)
 
-	// Access controller endpoints (require API key)
-	apiKey := os.Getenv("API_KEY")
-	if apiKey == "" {
-		apiKey = "face-scan-secure-key-2024"
-	}
-	accessControllerAuth := func() gin.HandlerFunc {
-		return func(c *gin.Context) {
-			key := c.GetHeader("X-API-Key")
-			if key == "" {
-				key = c.PostForm("api_key")
-			}
-			if key != apiKey {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid API key"})
-				c.Abort()
-				return
-			}
-			c.Next()
-		}
-	}
-
-	r.POST("/api/authenticate", accessControllerAuth(), authenticate)
-	r.POST("/api/access-log", accessControllerAuth(), logAccess)
+	// Access controller endpoints (no auth for Pi devices)
+	r.POST("/api/authenticate", authenticate)
+	r.POST("/api/access-log", logAccess)
 	r.GET("/api/occupancy", getOccupancy)
-	r.POST("/api/door/:zone_id/:action", accessControllerAuth(), controlDoor)
+	r.POST("/api/door/:zone_id/:action", controlDoor)
 	r.GET("/api/health", healthCheck)
 	r.GET("/api/last-action", getLastAction)
 
