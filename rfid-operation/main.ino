@@ -108,7 +108,7 @@ void loop() {
   lcdShow("Card scanned:", uid);
   delay(600);
 
-  // (3) countdown
+  // Countdown
   for (int i = 3; i >= 1; i--) {
     lcdShow("Look to camera", "Starting in " + String(i));
     delay(900);
@@ -123,20 +123,46 @@ void loop() {
     String status = resp.substring(7);
 
     if (status == "CHECKED_VERIFIED") {
+      // Success - access granted
       blinkColor(0, 1, 0, 2);
-      lcdShow("Checked:", "SUCCESSFUL");
-      delay(1300);
+      lcdShow("Access Granted", "Welcome!");
+      delay(2000);
+    } else if (status == "NOT_AUTHORIZED") {
+      // Card not registered or not authorized
+      blinkColor(1, 0, 0, 3);
+      lcdShow("Not Authorized", "Card not found");
+      delay(2000);
+    } else if (status == "NO_PHOTO") {
+      // No photo in system
+      blinkColor(1, 0, 1, 3);
+      lcdShow("No Photo", "Contact admin");
+      delay(2000);
+    } else if (status == "NO_FACE") {
+      // Reference photo has no face
+      blinkColor(1, 0, 1, 3);
+      lcdShow("Photo Error", "Re-register");
+      delay(2000);
+    } else if (status == "CHECKED_UNVERIFIED") {
+      // Face didn't match
+      blinkColor(1, 0, 0, 3);
+      lcdShow("Face Mismatch", "Try again");
+      delay(2000);
+    } else if (status == "ERROR") {
+      // System error
+      blinkColor(1, 1, 0, 3);
+      lcdShow("System Error", "Try again");
+      delay(2000);
     } else {
+      // Unknown response
       blinkColor(1, 0, 0, 2);
-      lcdShow("Checked:", "UNSUCCESSFUL");
-      delay(900);
-      lcdShow("Use the app", "to verify");
-      delay(1400);
+      lcdShow("Unknown Error", status);
+      delay(2000);
     }
   } else {
-    blinkColor(1, 0, 0, 2);
-    lcdShow("No response", "Try again");
-    delay(1400);
+    // No response - timeout
+    blinkColor(1, 0, 0, 3);
+    lcdShow("Timeout", "No response");
+    delay(2000);
   }
 
   setColor(0, 0, 1);
