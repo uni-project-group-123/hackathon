@@ -1,0 +1,6 @@
+{
+  "backend_url": "http://localhost:5000",
+  "zone_id": 1,
+  "access_point": "main-door",
+  "api_key": "face-scan-secure-key-2024"
+}

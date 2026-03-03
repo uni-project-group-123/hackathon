@@ -60,7 +60,9 @@
         .logs-table tr:last-child td { border-bottom: none; }
         .logs-table tr:hover { background: rgba(255,255,255,0.02); }
         
-        .method { display: inline-block; padding: 0.2rem 0.5rem; background: #2f3941; border-radius: 4px; font-size: 0.75rem; }
+        .method { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; }
+        .method-verified { background: rgba(0, 212, 170, 0.2); color: #00d4aa; }
+        .method-unverified { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
         .action-entry { color: #00d4aa; }
         .action-exit { color: #8b98a5; }
         .action-denied { color: #ef4444; }
@@ -338,15 +340,20 @@
             const logs = await res.json();
             const container = document.getElementById('logs-list');
             
-            container.innerHTML = logs.slice(0, 20).map(log => `
+            container.innerHTML = logs.slice(0, 20).map(log => {
+                const isUnverified = log.method.toLowerCase().includes('unverified');
+                const methodClass = isUnverified ? 'method-unverified' : 'method-verified';
+                const userName = log.user || 'Unknown Card';
+                const userIdText = log.user_id || log.user_id;
+                return `
                 <tr>
                     <td>${log.timestamp.split(' ')[1]}</td>
-                    <td>${log.user}<br><span style="color:#5c6b77;font-size:0.75rem">${log.user_id}</span></td>
+                    <td>${userName}<br><span style="color:#5c6b77;font-size:0.75rem">${userIdText}</span></td>
                     <td>${log.zone}</td>
                     <td class="action-${log.action}">${log.action.toUpperCase()}</td>
-                    <td><span class="method">${log.method}</span></td>
+                    <td><span class="method ${methodClass}">${log.method}</span></td>
                 </tr>
-            `).join('');
+            `}).join('');
         }
         
         async function loadUsers() {

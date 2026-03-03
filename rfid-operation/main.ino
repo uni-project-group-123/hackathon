@@ -106,63 +106,76 @@ void loop() {
   Serial.println(uid);
 
   lcdShow("Card scanned:", uid);
-  delay(600);
-
-  // Countdown
-  for (int i = 3; i >= 1; i--) {
-    lcdShow("Look to camera", "Starting in " + String(i));
-    delay(900);
-  }
-
-  lcdShow("Verifying...", "Please hold");
   setColor(0, 0, 1);
 
-  String resp = readLineWithTimeout(PYTHON_TIMEOUT_MS);
+  // Check for quick response (no photo / unknown card)
+  String quickResp = readLineWithTimeout(800);
 
-  if (resp.startsWith("RESULT,")) {
-    String status = resp.substring(7);
+  if (quickResp.startsWith("RESULT,")) {
+    String status = quickResp.substring(7);
 
-    if (status == "CHECKED_VERIFIED") {
-      // Success - access granted
+    if (status == "UNKNOWN_CARD") {
+      blinkColor(1, 0, 0, 3);
+      lcdShow("Unknown Card", "Not registered");
+      delay(2000);
+    } else if (status == "CHECKED_UNVERIFIED_NO_PHOTO") {
+      blinkColor(1, 1, 0, 2);
+      lcdShow("Checked In", "No photo on file");
+      delay(2000);
+    } else if (status == "CHECKED_VERIFIED") {
       blinkColor(0, 1, 0, 2);
       lcdShow("Access Granted", "Welcome!");
       delay(2000);
-    } else if (status == "NOT_AUTHORIZED") {
-      // Card not registered or not authorized
-      blinkColor(1, 0, 0, 3);
-      lcdShow("Not Authorized", "Card not found");
-      delay(2000);
-    } else if (status == "NO_PHOTO") {
-      // No photo in system
-      blinkColor(1, 0, 1, 3);
-      lcdShow("No Photo", "Contact admin");
-      delay(2000);
-    } else if (status == "NO_FACE") {
-      // Reference photo has no face
-      blinkColor(1, 0, 1, 3);
-      lcdShow("Photo Error", "Re-register");
-      delay(2000);
     } else if (status == "CHECKED_UNVERIFIED") {
-      // Face didn't match
       blinkColor(1, 0, 0, 3);
       lcdShow("Face Mismatch", "Try again");
       delay(2000);
     } else if (status == "ERROR") {
-      // System error
       blinkColor(1, 1, 0, 3);
       lcdShow("System Error", "Try again");
       delay(2000);
     } else {
-      // Unknown response
       blinkColor(1, 0, 0, 2);
-      lcdShow("Unknown Error", status);
+      lcdShow("Status:", status);
       delay(2000);
     }
   } else {
-    // No response - timeout
-    blinkColor(1, 0, 0, 3);
-    lcdShow("Timeout", "No response");
-    delay(2000);
+    // No quick response - user has photo, do countdown for camera
+    for (int i = 3; i >= 1; i--) {
+      lcdShow("Look to camera", "Starting in " + String(i));
+      delay(900);
+    }
+
+    lcdShow("Verifying...", "Please hold");
+    setColor(0, 0, 1);
+
+    String resp = readLineWithTimeout(PYTHON_TIMEOUT_MS);
+
+    if (resp.startsWith("RESULT,")) {
+      String status = resp.substring(7);
+
+      if (status == "CHECKED_VERIFIED") {
+        blinkColor(0, 1, 0, 2);
+        lcdShow("Access Granted", "Welcome!");
+        delay(2000);
+      } else if (status == "CHECKED_UNVERIFIED") {
+        blinkColor(1, 0, 0, 3);
+        lcdShow("Face Mismatch", "Try again");
+        delay(2000);
+      } else if (status == "ERROR") {
+        blinkColor(1, 1, 0, 3);
+        lcdShow("System Error", "Try again");
+        delay(2000);
+      } else {
+        blinkColor(1, 0, 0, 2);
+        lcdShow("Unknown Error", status);
+        delay(2000);
+      }
+    } else {
+      blinkColor(1, 0, 0, 3);
+      lcdShow("Timeout", "No response");
+      delay(2000);
+    }
   }
 
   setColor(0, 0, 1);
