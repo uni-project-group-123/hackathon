@@ -117,12 +117,16 @@ def overlay_inset(frame, inset_img, uid_text, status_text=None):
         )
 
 
+API_KEY = os.getenv("API_KEY", "dev-api-key-change-in-production")
+
+
 def send_to_server(card_id: str, method: str = "face"):
-    """Send authentication request to server."""
+    """Send authentication request to server with API key header."""
     try:
         resp = requests.post(
             f"{SERVER_URL}/api/authenticate",
             json={"card_id": card_id, "zone_id": ZONE_ID, "method": method},
+            headers={"X-API-Key": API_KEY},
             timeout=5,
         )
         return resp.json()
@@ -132,7 +136,7 @@ def send_to_server(card_id: str, method: str = "face"):
 
 
 def log_access_to_server(card_id: str, action: str, success: bool):
-    """Log access event to server."""
+    """Log access event to server with API key header."""
     try:
         requests.post(
             f"{SERVER_URL}/api/access-log",
@@ -143,6 +147,7 @@ def log_access_to_server(card_id: str, action: str, success: bool):
                 "action": action,
                 "success": success,
             },
+            headers={"X-API-Key": API_KEY},
             timeout=5,
         )
     except Exception as e:

@@ -51,7 +51,7 @@ a5fbf8c  Add server integration to face-check and rfid-operation
 │                                                                             │
 │  ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐  │
 │  │   ADMIN PANEL   │     │   MOBILE APP    │     │  ACCESS POINTS   │  │
-│  │   (Web UI)      │     │   (Future)      │     │   (Pi + Arduino) │  │
+│  │   (Web UI)      │     │   (Future)      │     │   (Laptop + Arduino) │  │
 │  └────────┬─────────┘     └────────┬─────────┘     └────────┬─────────┘  │
 │           │                       │                       │               │
 │           └───────────────────────┼───────────────────────┘               │
@@ -71,6 +71,8 @@ a5fbf8c  Add server integration to face-check and rfid-operation
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+*Note: The above diagram shows the originally intended Raspberry Pi deployment.*
 
 ### Component Details
 
@@ -107,7 +109,7 @@ a5fbf8c  Add server integration to face-check and rfid-operation
 └─────────────────────────────────────────────────────────────┘
 ```
 
-#### 2. Access Controller (Raspberry Pi + Arduino)
+#### 2. Access Controller (Laptop + Arduino)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -115,7 +117,7 @@ a5fbf8c  Add server integration to face-check and rfid-operation
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    │
-│  │  Arduino    │    │   Pi        │    │   Camera    │    │
+│  │  Arduino    │    │   Laptop        │    │   Camera    │    │
 │  │  Nano/Mega  │◄──►│  (Python)   │◄──►│  (USB)      │    │
 │  └──────┬──────┘    └──────┬──────┘    └─────────────┘    │
 │         │                  │                               │
@@ -169,7 +171,7 @@ a5fbf8c  Add server integration to face-check and rfid-operation
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Student    │     │   Arduino    │     │     Pi       │
+│   Student    │     │   Arduino    │     │   Laptop       │
 │  (Tap Card)  │     │  (NFC Read)  │     │  (Python)    │
 └──────┬───────┘     └──────┬───────┘     └──────┬───────┘
        │                     │                      │
@@ -225,7 +227,7 @@ a5fbf8c  Add server integration to face-check and rfid-operation
 │       │                                                         │
 │       ▼                                                         │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │  Pi sends POST /api/access-log                         │    │
+│  │  Laptop sends POST /api/access-log                         │    │
 │  │  {card_id, zone_id, action, method, success}           │    │
 │  └─────────────────────────┬───────────────────────────────┘    │
 │                            │                                    │
@@ -523,7 +525,7 @@ CREATE TABLE access_logs (
 
 ## Deployment
 
-### Raspberry Pi Setup
+### Laptop Setup (originally designed for Raspberry Pi)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -531,7 +533,7 @@ CREATE TABLE access_logs (
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │            Raspberry Pi 3/4/5                       │    │
+│  │            Laptop (any OS)                       │    │
 │  │  ┌─────────────────────────────────────────────┐   │    │
 │  │  │  Sentinel Access Controller (Python)         │   │    │
 │  │  │  - Serial communication with Arduino         │   │    │
@@ -573,7 +575,7 @@ CREATE TABLE access_logs (
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### systemd Service (Pi)
+### systemd Service (Laptop)
 
 ```ini
 [Unit]
@@ -582,9 +584,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/sentinel
-ExecStart=/usr/bin/python3 /home/pi/sentinel/face-check/main.py
+User=$USER
+WorkingDirectory=/home/$USER/sentinel
+ExecStart=/usr/bin/python3 /home/$USER/sentinel/face-check/main.py
 Environment="SERVER_URL=http://192.168.1.100:5000"
 Environment="ZONE_ID=1"
 Environment="API_KEY=your-secure-api-key"
@@ -644,7 +646,7 @@ WantedBy=multi-user.target
 ### Log Locations
 
 - Server: System journal or file
-- Pi: Console output or systemd logs
+- Laptop: Console output or systemd logs
 - Arduino: Serial monitor
 
 ---

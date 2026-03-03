@@ -30,8 +30,8 @@ A multi-factor authentication system that combines:
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
 │   Admin      │     │   Access    │     │   Server     │
-│   Dashboard  │◄────│   Points    │◄────│   (Pi)       │
-│   (Web)      │     │ (Pi+Arduino)│     │              │
+│   Dashboard  │◄────│   Points    │◄────│   (Laptop)       │
+│   (Web)      │     │ (Laptop+Arduino)│     │              │
 └──────────────┘     └──────────────┘     └──────┬───────┘
                                                   │
                                          ┌────────┴────────┐
@@ -41,6 +41,8 @@ A multi-factor authentication system that combines:
 ```
 
 ---
+
+*Note: The architecture diagram originally shows a Raspberry Pi deployment; the actual system runs on a laptop.*
 
 ## Development Journey
 
@@ -99,7 +101,7 @@ Every entry/exit/denial is logged with:
 
 ```
 ┌────────────────────────────────────┐
-│          Raspberry Pi              │
+│          Laptop (any OS)              │
 │  ┌──────────────────────────────┐  │
 │  │  Python Controller          │  │
 │  │  - Serial communication     │  │
@@ -123,7 +125,7 @@ Every entry/exit/denial is logged with:
 
 | Component | Approx Cost | Purpose |
 |-----------|-------------|---------|
-| Raspberry Pi 4 | $55 | Main controller |
+| Laptop (any OS) | $0 | Main controller (laptop) |
 | Arduino Nano | $10 | NFC reading |
 | NFC RC522 | $5 | Card reading |
 | USB Camera | $20 | Face verification |
@@ -166,7 +168,7 @@ Layer 2: Access Controllers
 1. User taps NFC card
    └─ Arduino reads UID
 
-2. Pi receives UID via serial
+2. Laptop receives UID via USB/serial
    └─ Sends to server:
       POST /api/authenticate
       {card_id: "A1B2", zone_id: 1}
@@ -176,7 +178,7 @@ Layer 2: Access Controllers
    └─ Checks permissions
    └─ Checks zone capacity
 
-4. Response to Pi
+4. Response to Laptop
    └─ {success: true, user: "John Doe"}
 
 5. Face verification (if enabled)
@@ -203,7 +205,7 @@ Layer 2: Access Controllers
 - **Styling**: Custom CSS (dark theme)
 
 ### Hardware
-- **Controller**: Raspberry Pi
+- **Controller**: Laptop (any OS)
 - **MCU**: Arduino Nano
 - **Language**: Python 3, C++
 
@@ -217,7 +219,7 @@ Layer 2: Access Controllers
 |----------|------|-------|
 | Linux x64 | 16.7 MB | Default build |
 | Windows x64 | 17.1 MB | No CGO required |
-| Linux ARM64 | ~17 MB | Pi 3/4/5 |
+| Linux ARM64 | ~17 MB | ARM laptops |
 
 ### Response Times
 
