@@ -1,0 +1,341 @@
+import os
+import time
+import serial
+import serial.tools.list_ports
+import cv2
+import numpy as np
+
+BAUD = 115200
+CAMERA_INDEX = 0
+USERS_DIR = "users"
+MODELS_DIR = "models"
+
+DET_MODEL = os.path.join(MODELS_DIR, "face_detection_yunet_2023mar.onnx")
+REC_MODEL = os.path.join(MODELS_DIR, "face_recognition_sface_2021dec.onnx")
+
+# cosine similarity threshold (adjust if needed)
+SIM_THRESHOLD = 0.45
+
+# GUI
+WINDOW_NAME = "Attendance Verifier"
+WINDOW_W = 570
+WINDOW_H = 720
+INSET_W = 140
+INSET_H = 180
+PADDING = 12
+
+
+def find_arduino_port() -> str:
+    ports = list(serial.tools.list_ports.comports())
+    for p in ports:
+        desc = (p.description or "").lower()
+        if "arduino" in desc or "ch340" in desc or "usb serial" in desc or "wch" in desc:
+            return p.device
+    if ports:
+        return ports[0].device
+    raise RuntimeError("Arduino port not found.")
+
+
+def uid_to_path(uid: str) -> str:
+    return os.path.join(USERS_DIR, uid.replace(":", "_") + ".jpg")
+
+
+def assert_model_ok(path: str, min_bytes: int):
+    if not os.path.exists(path):
+        raise RuntimeError(f"Missing model file: {path}")
+    size = os.path.getsize(path)
+    if size < min_bytes:
+        raise RuntimeError(f"Model appears corrupted/empty: {path} size={size}")
+
+
+def resize_to_window(img_bgr):
+    """Resize image to exactly WINDOW_W x WINDOW_H."""
+    return cv2.resize(img_bgr, (WINDOW_W, WINDOW_H))
+
+
+def largest_face(faces):
+    if faces is None or len(faces) == 0:
+        return None
+    faces = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)
+    return faces[0]
+
+
+def cosine_similarity(a, b) -> float:
+    a = a.reshape(-1).astype(np.float32)
+    b = b.reshape(-1).astype(np.float32)
+    denom = (np.linalg.norm(a) * np.linalg.norm(b)) + 1e-8
+    return float(np.dot(a, b) / denom)
+
+
+def get_embedding_from_face(img_bgr, face, face_recognizer):
+    aligned = face_recognizer.alignCrop(img_bgr, face)
+    emb = face_recognizer.feature(aligned)
+    return emb
+
+
+def overlay_inset(frame, inset_img, uid_text, status_text=None):
+    h, w = frame.shape[:2]
+    x2 = w - PADDING
+    y2 = h - PADDING
+    x1 = x2 - INSET_W
+    y1 = y2 - INSET_H
+
+    # dark background behind inset
+    cv2.rectangle(frame, (x1 - 6, y1 - 60), (x2 + 6, y2 + 6), (0, 0, 0), -1)
+
+    # paste thumbnail
+    if inset_img is not None:
+        thumb = cv2.resize(inset_img, (INSET_W, INSET_H))
+        frame[y1:y2, x1:x2] = thumb
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
+
+    # UID text
+    cv2.putText(
+        frame,
+        f"UID: {uid_text}",
+        (x1, y1 - 28),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (255, 255, 255),
+        2,
+        cv2.LINE_AA,
+    )
+
+    # status (optional)
+    if status_text:
+        cv2.putText(
+            frame,
+            status_text,
+            (x1, y1 - 8),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (0, 255, 0) if "VERIFIED" in status_text else (0, 0, 255),
+            2,
+            cv2.LINE_AA,
+        )
+
+
+def verify_live_with_gui(uid, ref_img_bgr, ref_emb, face_detector, face_recognizer,
+                         cap, seconds=5.0, close_delay=3.0):
+    """
+    Returns: (verified: bool, best_sim: float)
+    GUI: live view with bbox + reference thumbnail + UID.
+    Camera (cap) is passed from outside – we don't open/close it here.
+    Camera NEVER freezes the image – always displays live.
+    After verification or timeout: live with VERIFIED/UNVERIFIED overlay for close_delay s, then closes.
+    """
+    if not cap.isOpened():
+        raise RuntimeError("Cannot open camera.")
+
+    start = time.time()
+    best_sim = -1.0
+    verified = False
+
+    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(WINDOW_NAME, WINDOW_W, WINDOW_H)
+
+    while time.time() - start < seconds:
+        ret, frame = cap.read()
+        if not ret:
+            continue
+
+        small = resize_to_window(frame)
+        sh, sw = small.shape[:2]
+        face_detector.setInputSize((sw, sh))
+        faces = face_detector.detect(small)[1]
+
+        status_line = None
+
+        f = largest_face(faces)
+        if f is not None:
+            x, y, bw, bh = map(int, f[:4])
+            x = max(0, x); y = max(0, y)
+            bw = max(1, bw); bh = max(1, bh)
+
+            cv2.rectangle(small, (x, y), (x + bw, y + bh), (0, 255, 0), 2)
+
+            cam_emb = get_embedding_from_face(small, f, face_recognizer)
+            sim = cosine_similarity(ref_emb, cam_emb)
+            best_sim = max(best_sim, sim)
+
+            status_line = f"SIM: {sim:.3f}  TH: {SIM_THRESHOLD:.2f}"
+            if sim >= SIM_THRESHOLD:
+                verified = True
+                overlay_inset(small, ref_img_bgr, uid, status_text="VERIFIED")
+                cv2.putText(small, status_line, (PADDING, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2, cv2.LINE_AA)
+                cv2.imshow(WINDOW_NAME, small)
+                cv2.waitKey(1)
+                # Continue live with VERIFIED overlay for close_delay seconds
+                _show_live_result(cap, face_detector, ref_img_bgr, uid,
+                                  "VERIFIED", close_delay)
+                return True, best_sim
+        else:
+            status_line = "No face detected"
+
+
+        cv2.putText(small, status_line, (PADDING, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
+
+        cv2.putText(small, "Press Q to quit", (PADDING, sh - 12),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2, cv2.LINE_AA)
+
+        cv2.imshow(WINDOW_NAME, small)
+        key = cv2.waitKey(10) & 0xFF
+        if key in (ord('q'), ord('Q')):
+            cv2.destroyWindow(WINDOW_NAME)
+            cv2.waitKey(1)
+            raise KeyboardInterrupt
+
+    # timeout – not verified, show live with UNVERIFIED overlay
+    _show_live_result(cap, face_detector, ref_img_bgr, uid,
+                      "UNVERIFIED", close_delay)
+    return False, best_sim
+
+
+def _show_live_result(cap, face_detector, ref_img_bgr, uid, status, delay_sec):
+    """
+    Displays LIVE camera feed with status overlay (VERIFIED/UNVERIFIED)
+    for delay_sec seconds, then closes the window. Camera never freezes.
+    """
+    color = (0, 255, 0) if status == "VERIFIED" else (0, 0, 255)
+    t0 = time.time()
+
+    while time.time() - t0 < delay_sec:
+        ret, frame = cap.read()
+        if not ret:
+            key = cv2.waitKey(10) & 0xFF
+            if key in (ord('q'), ord('Q')):
+                break
+            continue
+
+        small = resize_to_window(frame)
+        sh, sw = small.shape[:2]
+
+        # Detect face and draw bbox even after decision
+        face_detector.setInputSize((sw, sh))
+        faces = face_detector.detect(small)[1]
+        f = largest_face(faces)
+        if f is not None:
+            x, y, bw, bh = map(int, f[:4])
+            x = max(0, x); y = max(0, y)
+            bw = max(1, bw); bh = max(1, bh)
+            cv2.rectangle(small, (x, y), (x + bw, y + bh), color, 2)
+
+        # Result overlay (only show reference image when verified)
+        if status == "VERIFIED":
+            overlay_inset(small, ref_img_bgr, uid, status_text=status)
+
+        # Large status text at the top
+        cv2.putText(small, status, (PADDING, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2, cv2.LINE_AA)
+
+        # Countdown
+        remaining = max(0.0, delay_sec - (time.time() - t0))
+        cv2.putText(small, f"Closing in {remaining:.1f}s", (PADDING, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2, cv2.LINE_AA)
+
+        cv2.imshow(WINDOW_NAME, small)
+        key = cv2.waitKey(10) & 0xFF
+        if key in (ord('q'), ord('Q')):
+            break
+
+    cv2.destroyWindow(WINDOW_NAME)
+    cv2.waitKey(1)  # flush events after destroying window
+
+
+def main():
+    os.makedirs(USERS_DIR, exist_ok=True)
+
+    # sanity check models
+    assert_model_ok(DET_MODEL, 200_000)    # YuNet ~338KB
+    assert_model_ok(REC_MODEL, 5_000_000)  # SFace ~36MB
+
+    # softer detection threshold (0.6 instead of 0.9)
+    face_detector = cv2.FaceDetectorYN.create(DET_MODEL, "", (320, 320), 0.6, 0.3, 5000)
+    face_recognizer = cv2.FaceRecognizerSF.create(REC_MODEL, "")
+
+    port = find_arduino_port()
+    print(f"[INFO] Arduino port: {port}")
+
+    # Open camera ONCE – avoid open/close delays on each scan
+    cap = cv2.VideoCapture(CAMERA_INDEX)
+    if not cap.isOpened():
+        raise RuntimeError("Cannot open camera.")
+    # Camera warm-up (auto-exposure, auto-WB)
+    time.sleep(0.5)
+    for _ in range(5):
+        cap.read()
+    print("[INFO] Camera ready.")
+
+    try:
+        with serial.Serial(port, BAUD, timeout=0.2) as ser:
+            time.sleep(2.0)  # UNO reset
+            ser.reset_input_buffer()
+            print("[INFO] Waiting for UID...")
+
+            while True:
+                # Read camera frames in background to prevent buffer overflow
+                cap.grab()
+
+                line = ser.readline().decode(errors="ignore").strip()
+                if not line:
+                    continue
+
+                print(f"[ARDUINO] {line}")
+
+                if not line.startswith("UID,"):
+                    continue
+
+                uid = line.split(",", 1)[1].strip()
+                ref_path = uid_to_path(uid)
+
+                if not os.path.exists(ref_path):
+                    print(f"[WARN] Missing photo: {ref_path}")
+                    ser.write(b"RESULT,CHECKED_UNVERIFIED\n")
+                    continue
+
+                ref_img = cv2.imread(ref_path)
+                if ref_img is None:
+                    print("[WARN] Cannot load reference image.")
+                    ser.write(b"RESULT,CHECKED_UNVERIFIED\n")
+                    continue
+
+                # reference embedding
+                ref_small = resize_to_window(ref_img)
+                rh, rw = ref_small.shape[:2]
+                face_detector.setInputSize((rw, rh))
+                faces = face_detector.detect(ref_small)[1]
+                f = largest_face(faces)
+
+                if f is None:
+                    print("[WARN] No face found in reference image (detection).")
+                    ser.write(b"RESULT,CHECKED_UNVERIFIED\n")
+                    continue
+
+                ref_emb = get_embedding_from_face(ref_small, f, face_recognizer)
+
+                # run live verification with GUI
+                try:
+                    ok, best_sim = verify_live_with_gui(
+                        uid, ref_img, ref_emb, face_detector, face_recognizer,
+                        cap, seconds=6.0, close_delay=3.0
+                    )
+                    print(f"[INFO] best_sim={best_sim:.3f} ok={ok}")
+                    if ok:
+                        ser.write(b"RESULT,CHECKED_VERIFIED\n")
+                    else:
+                        ser.write(b"RESULT,CHECKED_UNVERIFIED\n")
+                except KeyboardInterrupt:
+                    print("[INFO] Stopped by user.")
+                    return
+                except Exception as e:
+                    print(f"[ERROR] {e}")
+                    ser.write(b"RESULT,CHECKED_UNVERIFIED\n")
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
