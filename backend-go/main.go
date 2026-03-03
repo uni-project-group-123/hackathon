@@ -101,7 +101,7 @@ func main() {
 	// Access controller endpoints (require API key)
 	apiKey := os.Getenv("API_KEY")
 	if apiKey == "" {
-		apiKey = "dev-api-key-change-in-production"
+		apiKey = "face-scan-secure-key-2024"
 	}
 	accessControllerAuth := func() gin.HandlerFunc {
 		return func(c *gin.Context) {

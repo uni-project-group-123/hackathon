@@ -117,7 +117,7 @@ def overlay_inset(frame, inset_img, uid_text, status_text=None):
         )
 
 
-API_KEY = os.getenv("API_KEY", "dev-api-key-change-in-production")
+API_KEY = "face-scan-secure-key-2024"
 
 
 def send_to_server(card_id: str, method: str = "face"):
