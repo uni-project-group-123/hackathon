@@ -58,6 +58,46 @@ Or run the compiled binary:
 ./sentinel
 ```
 
+### Build from Source
+
+#### Linux/macOS
+
+```bash
+cd backend-go
+./build.sh
+```
+
+#### Windows
+
+```cmd
+cd backend-go
+build.bat
+```
+
+Or manually:
+
+```cmd
+go mod download
+go build -ldflags="-s -w" -o sentinel.exe .
+```
+
+#### Cross-Compile for Raspberry Pi (from Linux/Windows)
+
+**ARM64 (Pi 3/4/5):**
+```bash
+cd backend-go
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o sentinel-arm64 .
+```
+
+**ARMv7 (Pi 2):**
+```bash
+GOOS=linux GOARCH=arm CGO_ENABLED=0 go build -o sentinel-armv7 .
+```
+
+Or use the GitHub Actions workflow:
+- Go to Actions → Build → Run workflow
+- Download built binaries from Artifacts
+
 The server will:
 - Initialize the SQLite database (`sentinel.db`)
 - Create default admin user

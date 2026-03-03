@@ -1,14 +1,12 @@
 name: Build
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'backend-go/**'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'backend-go/**'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: false
+        type: string
 
 jobs:
   build:
@@ -56,7 +54,7 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout code
@@ -75,5 +73,6 @@ jobs:
         with:
           files: artifacts/*
           draft: true
+          tag_name: ${{ github.event.inputs.version }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
