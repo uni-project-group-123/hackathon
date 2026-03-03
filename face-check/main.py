@@ -4,15 +4,11 @@ import serial
 import serial.tools.list_ports
 import cv2
 import numpy as np
-import requests
 
 BAUD = 115200
 CAMERA_INDEX = 0
 USERS_DIR = "users"
 MODELS_DIR = "models"
-
-SERVER_URL = os.environ.get("SERVER_URL", "http://localhost:5000")
-ZONE_ID = int(os.environ.get("ZONE_ID", "1"))
 
 DET_MODEL = os.path.join(MODELS_DIR, "face_detection_yunet_2023mar.onnx")
 REC_MODEL = os.path.join(MODELS_DIR, "face_recognition_sface_2021dec.onnx")
@@ -116,37 +112,6 @@ def overlay_inset(frame, inset_img, uid_text, status_text=None):
             cv2.LINE_AA,
         )
 
-
-def send_to_server(card_id: str, method: str = "face"):
-    """Send authentication request to server."""
-    try:
-        resp = requests.post(
-            f"{SERVER_URL}/api/authenticate",
-            json={"card_id": card_id, "zone_id": ZONE_ID, "method": method},
-            timeout=5,
-        )
-        return resp.json()
-    except Exception as e:
-        print(f"[ERROR] Server auth failed: {e}")
-        return {"success": False, "message": "Server error"}
-
-
-def log_access_to_server(card_id: str, action: str, success: bool):
-    """Log access event to server."""
-    try:
-        requests.post(
-            f"{SERVER_URL}/api/access-log",
-            json={
-                "card_id": card_id,
-                "zone_id": ZONE_ID,
-                "method": "face",
-                "action": action,
-                "success": success,
-            },
-            timeout=5,
-        )
-    except Exception as e:
-        print(f"[ERROR] Failed to log access: {e}")
 
 
 def verify_live_with_gui(
@@ -323,8 +288,6 @@ def main():
 
     port = find_arduino_port()
     print(f"[INFO] Arduino port: {port}")
-    print(f"[INFO] Server URL: {SERVER_URL}")
-    print(f"[INFO] Zone ID: {ZONE_ID}")
 
     cap = cv2.VideoCapture(CAMERA_INDEX)
     if not cap.isOpened():
@@ -353,29 +316,18 @@ def main():
                     continue
 
                 uid = line.split(",", 1)[1].strip()
-
-                # Send to server - first verify card is registered
-                server_resp = send_to_server(uid, "face")
-                print(f"[SERVER] {server_resp}")
-
-                if not server_resp.get("success"):
-                    print(f"[WARN] Card not authorized: {uid}")
-                    ser.write(b"RESULT,NOT_AUTHORIZED\n")
-                    log_access_to_server(uid, "denied", False)
-                    continue
+                print(f"[INFO] Card scanned: {uid}")
 
                 ref_path = uid_to_path(uid)
                 if not os.path.exists(ref_path):
                     print(f"[WARN] Missing photo: {ref_path}")
                     ser.write(b"RESULT,NO_PHOTO\n")
-                    log_access_to_server(uid, "denied", False)
                     continue
 
                 ref_img = cv2.imread(ref_path)
                 if ref_img is None:
                     print("[WARN] Cannot load reference image.")
                     ser.write(b"RESULT,NO_PHOTO\n")
-                    log_access_to_server(uid, "denied", False)
                     continue
 
                 ref_small = resize_to_window(ref_img)
@@ -387,7 +339,6 @@ def main():
                 if f is None:
                     print("[WARN] No face found in reference image.")
                     ser.write(b"RESULT,NO_FACE\n")
-                    log_access_to_server(uid, "denied", False)
                     continue
 
                 ref_emb = get_embedding_from_face(ref_small, f, face_recognizer)
@@ -407,10 +358,8 @@ def main():
 
                     if ok:
                         ser.write(b"RESULT,CHECKED_VERIFIED\n")
-                        log_access_to_server(uid, "entry", True)
                     else:
                         ser.write(b"RESULT,CHECKED_UNVERIFIED\n")
-                        log_access_to_server(uid, "denied", False)
 
                 except KeyboardInterrupt:
                     print("[INFO] Stopped by user.")
@@ -418,7 +367,6 @@ def main():
                 except Exception as e:
                     print(f"[ERROR] {e}")
                     ser.write(b"RESULT,ERROR\n")
-                    log_access_to_server(uid, "error", False)
     finally:
         cap.release()
         cv2.destroyAllWindows()
