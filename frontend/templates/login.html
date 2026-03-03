@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Sentinel Admin</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            background: #0f1419; 
+            color: #e7e9ea; 
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-box { 
+            background: #1a1f26; 
+            padding: 2.5rem; 
+            border-radius: 16px; 
+            border: 1px solid #2f3941;
+            width: 100%;
+            max-width: 380px;
+        }
+        .logo { 
+            font-size: 1.75rem; 
+            font-weight: bold; 
+            color: #00d4aa; 
+            display: flex; 
+            align-items: center; 
+            gap: 0.5rem; 
+            justify-content: center;
+            margin-bottom: 2rem;
+        }
+        .logo svg { width: 32px; height: 32px; }
+        h2 { text-align: center; margin-bottom: 1.5rem; font-weight: 500; }
+        input { 
+            width: 100%; 
+            padding: 0.875rem 1rem; 
+            background: #0f1419; 
+            border: 1px solid #2f3941; 
+            border-radius: 8px; 
+            color: #e7e9ea; 
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+        input:focus { outline: none; border-color: #00d4aa; }
+        input::placeholder { color: #5c6b77; }
+        button { 
+            width: 100%; 
+            padding: 0.875rem; 
+            background: #00d4aa; 
+            color: #000; 
+            border: none; 
+            border-radius: 8px; 
+            font-size: 1rem; 
+            font-weight: 600; 
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover { background: #00e6b8; }
+        .error { 
+            background: rgba(239, 68, 68, 0.15); 
+            color: #ef4444; 
+            padding: 0.75rem; 
+            border-radius: 8px; 
+            margin-bottom: 1rem; 
+            text-align: center;
+            font-size: 0.875rem;
+        }
+        .hint { text-align: center; margin-top: 1.5rem; color: #5c6b77; font-size: 0.875rem; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <div class="logo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            Sentinel
+        </div>
+        <h2>Admin Login</h2>
+        {{ if .Error }}
+        <div class="error">{{ .Error }}</div>
+        {{ end }}
+        <form method="POST">
+            <input type="text" name="username" placeholder="Username" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit">Sign In</button>
+        </form>
+        <p class="hint">Default: admin / admin1234</p>
+    </div>
+</body>
+</html>
