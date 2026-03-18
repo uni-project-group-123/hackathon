@@ -1,0 +1,49 @@
+# Binaries / Executables
+sentinel
+sentinel-*
+*.exe
+*.db
+*.db-journal
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Go
+go.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cache
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+frontend/static/
+frontend/node_modules/
+
+# Logs
+*.log
+
+# Biometric data (replace with your own user images)
+# face-check/users/

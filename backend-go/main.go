@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-contrib/sessions"
@@ -78,7 +79,11 @@ func main() {
 
 	r.LoadHTMLGlob("../frontend/templates/*")
 
-	store := cookie.NewStore([]byte("sentinel-secret-key-change-in-production"))
+	secretKey := os.Getenv("SESSION_SECRET")
+	if secretKey == "" {
+		secretKey = "sentinel-secret-key-change-in-production"
+	}
+	store := cookie.NewStore([]byte(secretKey))
 	r.Use(sessions.Sessions("sentinel_session", store))
 
 	r.GET("/login", loginPage)
